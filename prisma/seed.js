@@ -4,6 +4,9 @@ import { seedInstitutionTypes } from "./seeders/InstitutionTypeSeeder.js";
 import { seedProvince } from "./seeders/ProvinceSeeder.js";
 import { seedRoles } from "./seeders/RoleSeeder.js";
 import { seedUser } from "./seeders/UserSeeder.js";
+import { seedQuestions } from "./seeders/QuestionSeeder.js";
+import { seedQuesioners } from "./seeders/QuesionerSeeder.js";
+import { seedOptions } from "./seeders/OptionSeeder.js";
 
 async function main() {
   console.log("Starting seeding process...");
@@ -14,6 +17,9 @@ async function main() {
   await seedProvince();
   await seedCity();
   await seedCategories();
+  await seedQuesioners();
+  await seedQuestions();
+  await seedOptions();
 
   console.log("Seeding process completed!");
 }

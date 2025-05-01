@@ -4,6 +4,23 @@ const prisma = new PrismaClient();
 
 export const seedRoles = async () => {
   try {
+    const existingRoles = await prisma.role.findMany({
+      where: {
+        OR: [
+          { name: "admin" },
+          { name: "parent" },
+          { name: "school" },
+          { name: "teacher" },
+          { name: "healthcare" },
+        ],
+      },
+    });
+
+    if (existingRoles.length > 0) {
+      console.log("Roles already exist");
+      return;
+    }
+
     await prisma.role.createMany({
       data: [
         { name: "admin" },
@@ -12,7 +29,7 @@ export const seedRoles = async () => {
         { name: "teacher" },
         { name: "healthcare" },
       ],
-      skipDuplicates: true,
+      skipDuplicates: false,
     });
     console.log("Roles seeded successfully");
   } catch (error) {

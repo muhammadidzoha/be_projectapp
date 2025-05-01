@@ -7,6 +7,17 @@ export const seedUser = async () => {
   try {
     const hashPassword = await argon2.hash("admin");
 
+    const existingUsers = await prisma.user.findUnique({
+      where: {
+        username: "admin",
+      },
+    });
+
+    if (existingUsers) {
+      console.log("User already exists");
+      return;
+    }
+
     await prisma.user.create({
       data: {
         username: "admin",
@@ -17,6 +28,6 @@ export const seedUser = async () => {
     });
     console.log("User seeded successfully");
   } catch (error) {
-    console.error(error);
+    console.error(error.message);
   }
 };
