@@ -1,0 +1,150 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Role {
+  id    Int    @id @default(autoincrement())
+  name  String @unique @db.VarChar(255)
+  users User[] @relation("UserRoles")
+
+  @@map("roles")
+}
+
+model User {
+  id            String   @id @default(uuid())
+  username      String   @unique() @db.VarChar(255)
+  email         String   @unique @default("") @db.VarChar(255)
+  password      String   @db.VarChar(255)
+  role_id       Int      @db.Int
+  refresh_token String?  @db.Text
+  created_at    DateTime @default(now()) @db.Timestamp(2)
+  updated_at    DateTime @default(now()) @db.Timestamp(2)
+
+  role        Role         @relation("UserRoles", fields: [role_id], references: [id])
+  institution Institution? @relation("UserInstitution")
+
+  @@map("users")
+}
+
+model InstitutionType {
+  id         Int      @id @default(autoincrement())
+  name       String   @db.VarChar(255)
+  created_at DateTime @default(now()) @db.Timestamp(2)
+  updated_at DateTime @default(now()) @db.Timestamp(2)
+
+  institutions Institution[] @relation("InstitutionType")
+
+  @@map("institution_types")
+}
+
+model Institution {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(255)
+  email       String   @db.VarChar(255)
+  address     String   @db.VarChar(255)
+  phone       String   @db.VarChar(255)
+  user_id     String?  @unique @db.VarChar(255)
+  city_id     Int?     @db.Int
+  province_id Int?     @db.Int
+  type        Int      @db.Int
+  created_at  DateTime @default(now()) @db.Timestamp(2)
+  updated_at  DateTime @default(now()) @db.Timestamp(2)
+
+  city             City?           @relation("CityInstitution", fields: [city_id], references: [id])
+  province         Province?       @relation("ProvinceInstitution", fields: [province_id], references: [id])
+  user             User?           @relation("UserInstitution", fields: [user_id], references: [id])
+  institution_type InstitutionType @relation("InstitutionType", fields: [type], references: [id])
+
+  @@map("institutions")
+}
+
+model Province {
+  id         Int      @id @default(autoincrement())
+  name       String   @db.VarChar(255)
+  created_at DateTime @default(now()) @db.Timestamp(2)
+  updated_at DateTime @default(now()) @db.Timestamp(2)
+
+  institutions Institution[] @relation("ProvinceInstitution")
+  city         City[]        @relation("ProvinceCity")
+
+  @@map("provinces")
+}
+
+model City {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(255)
+  province_id Int      @db.Int
+  created_at  DateTime @default(now()) @db.Timestamp(2)
+  updated_at  DateTime @default(now()) @db.Timestamp(2)
+
+  institutions Institution[] @relation("CityInstitution")
+  province     Province      @relation("ProvinceCity", fields: [province_id], references: [id])
+
+  @@map("cities")
+}
+
+model Category {
+  id         Int      @id @default(autoincrement())
+  name       String   @db.VarChar(255)
+  path       String?  @db.VarChar(255)
+  created_at DateTime @default(now()) @db.Timestamp(2)
+  updated_at DateTime @default(now()) @db.Timestamp(2)
+
+  @@map("categories")
+}
+
+//** all attributes for the question case start
+
+model Quesioner {
+  id          Int      @id @default(autoincrement())
+  title       String   @db.VarChar(255)
+  description String   @db.Text
+  created_at  DateTime @default(now()) @db.Timestamp(2)
+  updated_at  DateTime @default(now()) @db.Timestamp(2)
+
+  questions Question[] @relation("QuesionerQuestions")
+
+  @@map("quesioners")
+}
+
+model Question {
+  id           Int          @id @default(autoincrement())
+  quesioner_id Int          @db.Int
+  title        String       @db.Text
+  type         QuestionType
+  is_required  Boolean      @default(true)
+  created_at   DateTime     @default(now()) @db.Timestamp(2)
+  updated_at   DateTime     @default(now()) @db.Timestamp(2)
+
+  Quesioner Quesioner? @relation("QuesionerQuestions", fields: [quesioner_id], references: [id])
+  options   Option[]   @relation("QuestionOptions")
+
+  @@map("questions")
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  BOOLEAN
+  SCALE
+  TEXT
+}
+
+model Option {
+  id          Int      @id @default(autoincrement())
+  question_id Int      @db.Int
+  title       String   @db.VarChar(255)
+  score       Int?     @default(0) @db.Int
+  created_at  DateTime @default(now()) @db.Timestamp(2)
+  updated_at  DateTime @default(now()) @db.Timestamp(2)
+
+  Question Question? @relation("QuestionOptions", fields: [question_id], references: [id])
+
+  @@map("options")
+}
+
+//** all attributes for the question case end
