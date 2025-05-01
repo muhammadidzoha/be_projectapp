@@ -4,6 +4,23 @@ const prisma = new PrismaClient();
 
 export const seedCategories = async () => {
   try {
+    const existingCategories = await prisma.category.findMany({
+      where: {
+        OR: [
+          { name: "Tingkat Pengetahuan Gizi Seimbang" },
+          { name: "Pelaksanaan Pendidikan Kesehatan" },
+          { name: "Kebiasaan Sehari-hari Anak" },
+          { name: "Pelaksanaan Pelayanan Kesehatan" },
+          { name: "Pembinaan Lingkungan Sehat" },
+        ],
+      },
+    });
+
+    if (existingCategories.length > 0) {
+      console.log("Categories already exist");
+      return;
+    }
+
     await prisma.category.createMany({
       data: [
         {
@@ -27,7 +44,6 @@ export const seedCategories = async () => {
           path: "/pembinaan-lingkungan-sehat",
         },
       ],
-      skipDuplicates: true,
     });
     console.log("Categories seeded successfully");
   } catch (error) {
