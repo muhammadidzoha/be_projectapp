@@ -27,6 +27,9 @@ model User {
 
   role        Role         @relation("UserRoles", fields: [role_id], references: [id])
   institution Institution? @relation("UserInstitution")
+  teacher     Teacher?     @relation("UserTeacher")
+  family      Family?      @relation("UserFamily")
+  nutrition   Nutrition[]  @relation("UserNutrition")
 
   @@map("users")
 }
@@ -59,6 +62,9 @@ model Institution {
   province         Province?       @relation("ProvinceInstitution", fields: [province_id], references: [id])
   user             User?           @relation("UserInstitution", fields: [user_id], references: [id])
   institution_type InstitutionType @relation("InstitutionType", fields: [type], references: [id])
+  teachers         Teacher[]       @relation("InstitutionTeacher")
+  familyMember     FamilyMember[]  @relation("FamilyMemberInstitution")
+  student          Student[]       @relation("StudentInstitution")
 
   @@map("institutions")
 }
@@ -148,3 +154,220 @@ model Option {
 }
 
 //** all attributes for the question case end
+
+model Teacher {
+  id         String   @id @default(uuid())
+  fullName   String   @db.VarChar(255)
+  role       String?  @db.VarChar(255)
+  address    String   @db.VarChar(255)
+  phone      String   @db.VarChar(255)
+  user_id    String?  @unique @db.VarChar(255)
+  school_id  Int      @db.Int
+  created_at DateTime @default(now()) @db.Timestamp(2)
+  updated_at DateTime @default(now()) @db.Timestamp(2)
+
+  user        User?       @relation("UserTeacher", fields: [user_id], references: [id])
+  institution Institution @relation("InstitutionTeacher", fields: [school_id], references: [id])
+  classes     Class[]     @relation("TeacherClass")
+
+  @@map("teachers")
+}
+
+model Class {
+  id         Int      @id @default(autoincrement())
+  name       String   @unique @db.VarChar(255)
+  created_at DateTime @default(now()) @db.Timestamp(2)
+  updated_at DateTime @default(now()) @db.Timestamp(2)
+  teacher_id String?  @db.VarChar(255)
+
+  teacher  Teacher?  @relation("TeacherClass", fields: [teacher_id], references: [id], onDelete: SetNull)
+  students Student[] @relation("ClassStudent")
+
+  @@map("classes")
+}
+
+//** all attributes for the family case start
+
+model Family {
+  id         String   @id @default(uuid())
+  created_at DateTime @default(now()) @db.Timestamp(2)
+  updated_at DateTime @default(now()) @db.Timestamp(2)
+  userId     String   @unique @db.VarChar(255)
+
+  user         User           @relation("UserFamily", fields: [userId], references: [id])
+  familyMember FamilyMember[] @relation("FamilyMemberFamily")
+
+  @@map("families")
+}
+
+enum GENDER {
+  L
+  P
+}
+
+enum EDUCATION {
+  SD
+  SMP
+  SMA
+  D1
+  D2
+  D3
+  S1
+  S2
+  S3
+}
+
+enum RELATION {
+  AYAH
+  IBU
+  ANAK
+  LAINNYA
+}
+
+model FamilyMember {
+  id            String    @id @default(uuid())
+  fullName      String    @db.VarChar(255)
+  birthDate     DateTime  @db.Date
+  education     EDUCATION
+  jobId         Int?      @db.Int
+  residenceId   Int       @db.Int
+  gender        GENDER
+  relation      RELATION
+  familyId      String    @db.VarChar(255)
+  institutionId Int?      @db.Int
+  phone         String?   @db.VarChar(255)
+  isCompleted   Boolean   @default(false)
+  createdAt     DateTime  @default(now()) @db.Timestamp(2)
+  updatedAt     DateTime  @default(now()) @db.Timestamp(2)
+
+  family      Family       @relation("FamilyMemberFamily", fields: [familyId], references: [id])
+  job         Job?         @relation("FamilyMemberJob", fields: [jobId], references: [id])
+  residence   Residence    @relation("FamilyMemberResidence", fields: [residenceId], references: [id])
+  nutrition   Nutrition[]  @relation("FamilyMemberNutrition")
+  institution Institution? @relation("FamilyMemberInstitution", fields: [institutionId], references: [id])
+  student     Student?     @relation("StudentFamilyMember")
+
+  @@map("family_members")
+}
+
+enum JOBTYPE {
+  PEKERJA_TETAP
+  PEKERJA_TIDAK_TETAP
+  PEKERJA_PARUH_WAKTU
+  PEKERJA_FREELANCE
+  PEKERJA_MUSIMAN
+  PEKERJA_KONTRAK
+  PEGAWAI_NEGERI_SIPIL
+  PEGAWAI_BUMN
+  PEGAWAI_SWASTA
+}
+
+model JobType {
+  id        Int      @id @default(autoincrement()) @db.Int
+  name      String?  @db.VarChar(255)
+  type      JOBTYPE
+  createdAt DateTime @default(now()) @db.Timestamp(2)
+  updatedAt DateTime @default(now()) @db.Timestamp(2)
+  job       Job[]    @relation("JobTypeJob")
+
+  @@map("job_types")
+}
+
+enum SALARY {
+  KURANG_DARI_SATU_JUTA
+  SATU_JUTA_SAMPAI_DUA_JUTA
+  DUA_JUTA_SAMPAI_TIGA_JUTA
+  TIGA_JUTA_SAMPAI_EMPAT_JUTA
+  EMPAT_JUTA_SAMPAI_LIMA_JUTA
+  LIMA_JUTA_SAMPAI_ENAM_JUTA
+  ENAM_JUTA_SAMPAI_TUJUH_JUTA
+  TUJUH_JUTA_SAMPAI_DELAPAN_JUTA
+  DELAPAN_JUTA_SAMPAI_SEMBILAN_JUTA
+  SEMBILAN_JUTA_SAMPAI_SEPULUH_JUTA
+  LEBIH_DARI_SEPULUH_JUTA
+}
+
+model Job {
+  id        Int      @id @default(autoincrement()) @db.Int
+  income    SALARY
+  jobTypeId Int      @db.Int
+  createdAt DateTime @default(now()) @db.Timestamp(2)
+  updatedAt DateTime @default(now()) @db.Timestamp(2)
+
+  jobType      JobType        @relation("JobTypeJob", fields: [jobTypeId], references: [id])
+  familyMember FamilyMember[] @relation("FamilyMemberJob")
+
+  @@map("jobs")
+}
+
+enum RESIDENCESTATUS {
+  MILIK_SENDIRI
+  MENYEWA
+  BERSAMA_ORANG_TUA
+  LAINNYA
+}
+
+model Residence {
+  id      Int             @id @default(autoincrement()) @db.Int
+  status  RESIDENCESTATUS
+  address String?         @db.VarChar(255)
+
+  familyMember FamilyMember[] @relation("FamilyMemberResidence")
+
+  @@map("residences")
+}
+
+model Nutrition {
+  id                Int      @id @default(autoincrement()) @db.Int
+  height            Float    @db.Float
+  weight            Float    @db.Float
+  bmi               Float?   @db.Float
+  birthWeight       Float?   @db.Float
+  familyMemberId    String   @unique @db.VarChar(255)
+  createdAt         DateTime @default(now()) @db.Timestamp(2)
+  updatedAt         DateTime @default(now()) @db.Timestamp(2)
+  createdBy         String   @db.VarChar(255)
+  nutritionStatusId Int?     @db.Int
+
+  nutritionStatus NutritionStatus? @relation("NutritionStatus", fields: [nutritionStatusId], references: [id])
+  user            User             @relation("UserNutrition", fields: [createdBy], references: [id])
+  familyMember    FamilyMember     @relation("FamilyMemberNutrition", fields: [familyMemberId], references: [id])
+
+  @@map("nutritions")
+}
+
+enum NUTRITIONSTATUS {
+  KURUS
+  NORMAL
+  GEMUK
+}
+
+model NutritionStatus {
+  id          Int             @id @default(autoincrement()) @db.Int
+  status      NUTRITIONSTATUS
+  information String?         @db.VarChar(255)
+  createdAt   DateTime        @default(now()) @db.Timestamp(2)
+  updatedAt   DateTime        @default(now()) @db.Timestamp(2)
+
+  nutrition Nutrition[] @relation("NutritionStatus")
+
+  @@map("nutrition_status")
+}
+
+model Student {
+  id             String @id @default(uuid())
+  schoolId       Int    @db.Int
+  familyMemberId String @unique @db.VarChar(255)
+  nis            String @unique @db.VarChar(255)
+  schoolYear     String @db.VarChar(255)
+  semester       String @db.VarChar(255)
+  classId        Int    @db.Int
+
+  institution  Institution  @relation("StudentInstitution", fields: [schoolId], references: [id])
+  familyMember FamilyMember @relation("StudentFamilyMember", fields: [familyMemberId], references: [id])
+  class        Class?       @relation("ClassStudent", fields: [classId], references: [id])
+
+  @@map("students")
+}
+
+//** all attributes for the family case end

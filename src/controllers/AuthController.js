@@ -21,14 +21,26 @@ export const registerParent = async (req, res) => {
       return errorResponse(res, null, "Username atau email sudah digunakan");
     }
 
-    const newParent = await prisma.user.create({
-      data: {
-        username,
-        email,
-        password: hashPassword,
-        role_id: role_id,
-      },
-    });
+    const [newParent] = await prisma.$transaction([
+      prisma.user.create({
+        data: {
+          username,
+          email,
+          password: hashPassword,
+          role_id: role_id,
+        },
+      }),
+      prisma.family.create({
+        data: {
+          user: {
+            connect: {
+              username: username,
+            },
+          },
+        },
+      }),
+    ]);
+
     return successResponse(res, newParent, "Berhasil membuat akun");
   } catch (error) {
     return errorResponse(res, error, "Error saat membuat akun");

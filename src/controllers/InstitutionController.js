@@ -110,6 +110,29 @@ export const getInstitutions = async (req, res) => {
   }
 };
 
+export const getInstitutionByUser = async (req, res) => {
+  try {
+    const user = req.user;
+    const institution = await prisma.institution.findFirst({
+      where: {
+        user_id: user.id,
+      },
+    });
+
+    if (!institution) {
+      return errorResponse(res, 404, "Institution not found");
+    }
+
+    return successResponse(
+      res,
+      institution,
+      "Institution retrieved successfully"
+    );
+  } catch (error) {
+    return errorResponse(res, error, "Internal server error");
+  }
+};
+
 export const getInstitutionType = async (req, res) => {
   try {
     const institutionTypes = await prisma.institutionType.findMany({

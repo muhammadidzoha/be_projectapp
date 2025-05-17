@@ -33,7 +33,7 @@ export const getCategory = async (req, res) => {
       skip: offset,
       take: limit,
       orderBy: {
-        id: "desc",
+        id: "asc",
       },
     });
 

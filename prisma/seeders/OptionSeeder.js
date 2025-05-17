@@ -250,6 +250,8 @@ export const seedOptions = async () => {
         { question_id: 86, title: "Tidak", score: 0 },
         { question_id: 87, title: "Ya", score: 1 },
         { question_id: 87, title: "Tidak", score: 0 },
+        { question_id: 88, title: "Ya", score: 1 },
+        { question_id: 88, title: "Tidak", score: 0 },
       ],
     });
   } catch (error) {
