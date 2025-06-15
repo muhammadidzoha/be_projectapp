@@ -126,6 +126,41 @@ export const getQuestionByQuesionerId = async (req, res) => {
   }
 };
 
+export const getAllQuestionByQuesionerId = async (req, res) => {
+  try {
+    const questions = await prisma.question.findMany({
+      where: {
+        quesioner_id: parseInt(req.params.id),
+      },
+      select: {
+        id: true,
+        quesioner_id: true,
+        title: true,
+        type: true,
+        is_required: true,
+        options: {
+          select: {
+            id: true,
+            question_id: true,
+            title: true,
+            score: true,
+          },
+        },
+      },
+      orderBy: {
+        id: "asc",
+      },
+    });
+    return successResponse(
+      res,
+      questions,
+      `Question ${req.params.id} retrieved successfully`
+    );
+  } catch (error) {
+    return errorResponse(res, error, "Failed to retrieve question");
+  }
+};
+
 export const updateQuestion = async (req, res) => {
   const { id } = req.params;
   const { title, type, options } = req.body;

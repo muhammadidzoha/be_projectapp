@@ -56,6 +56,11 @@ export const getUsers = async (req, res) => {
           phone: true,
         },
       },
+      teacher: {
+        select: {
+          institution: { select: { id: true, name: true, phone: true } },
+        },
+      },
     },
     skip: offset,
     take: limit,
@@ -110,4 +115,31 @@ export const getUserById = async (req, res) => {
 
 export const updateUser = async (req, res) => {};
 
-export const deleteUser = async (req, res) => {};
+export const deleteUser = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const user = await prisma.user.findFirst({
+      where: {
+        id,
+      },
+    });
+
+    if (!user) {
+      return errorResponse(res, null, "User Not Found");
+    }
+
+    if (user.role_id === 1) {
+      return errorResponse(res, null, "Cannot delete admin user");
+    } else {
+      await prisma.user.delete({
+        where: {
+          id,
+        },
+      });
+    }
+    return successResponse(res, 200, "Berhasil menghapus user");
+  } catch (error) {
+    return errorResponse(res, error, "Gagal menghapus user");
+  }
+};

@@ -44,10 +44,10 @@ export const getClasses = async (req, res) => {
     return successResponse(
       res,
       { totalRows, totalPage, page, limit, classes },
-      "Teachers retrieved successfully"
+      "Classes retrieved successfully"
     );
   } catch (error) {
-    return errorResponse(res, error, "Internal server error");
+    return errorResponse(res, error, "Failed to retrieve classes");
   }
 };
 

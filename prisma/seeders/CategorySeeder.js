@@ -8,10 +8,9 @@ export const seedCategories = async () => {
       where: {
         OR: [
           { name: "Tingkat Pengetahuan Gizi Seimbang" },
-          { name: "Pelaksanaan Pendidikan Kesehatan" },
           { name: "Kebiasaan Sehari-hari Anak" },
-          { name: "Pelaksanaan Pelayanan Kesehatan" },
-          { name: "Pembinaan Lingkungan Sehat" },
+          { name: "Pelayanan Kesehatan Sekolah" },
+          { name: "Lingkungan Sekolah" },
         ],
       },
     });
@@ -28,20 +27,16 @@ export const seedCategories = async () => {
           path: "/tingkat-pengetahuan-gizi-seimbang",
         },
         {
-          name: "Pelaksanaan Pendidikan Kesehatan",
-          path: "/pelaksanaan-pendidikan-kesehatan",
-        },
-        {
           name: "Kebiasaan Sehari-hari Anak",
           path: "/kebiasaan-sehari-hari-anak",
         },
         {
-          name: "Pelaksanaan Pelayanan Kesehatan",
-          path: "/pelaksanaan-pelayanan-kesehatan",
+          name: "Pelayanan Kesehatan Sekolah",
+          path: "/pelayanan-kesehatan-sekolah",
         },
         {
-          name: "Pembinaan Lingkungan Sehat",
-          path: "/pembinaan-lingkungan-sehat",
+          name: "Lingkungan Sekolah",
+          path: "/lingkungan-sekolah",
         },
       ],
     });

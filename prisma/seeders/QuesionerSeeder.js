@@ -8,10 +8,9 @@ export const seedQuesioners = async () => {
       where: {
         OR: [
           { title: "Tingkat Pengetahuan Gizi Seimbang" },
-          { title: "Pelaksanaan Pendidikan Kesehatan" },
           { title: "Kebiasaan Sehari-hari Anak" },
-          { title: "Pelaksanaan Pelayanan Kesehatan" },
-          { title: "Pembinaan Lingkungan Sehat" },
+          { title: "Pelayanan Kesehatan Sekolah" },
+          { title: "Lingkungan Sekolah" },
         ],
       },
     });
@@ -28,20 +27,16 @@ export const seedQuesioners = async () => {
           description: "Quisioner tentang pengetahuan gizi seimbang orang tua",
         },
         {
-          title: "Pelaksanaan Pendidikan Kesehatan",
-          description: "Quisioner pelaksanaan pendidikan kesehatan di sekolah",
-        },
-        {
           title: "Kebiasaan Sehari-hari Anak",
           description: "Quisioner untuk mengetahui kebiasaaan sehari-hari anak",
         },
         {
-          title: "Pelaksanaan Pelayanan Kesehatan",
-          description: "Quisioner Pelaksanaan pelayanan kesehatan",
+          title: "Pelayanan Kesehatan Sekolah",
+          description: "Quisioner Pelayanan kesehatan di sekolah",
         },
         {
-          title: "Pembinaan Lingkungan Sehat",
-          description: "Quisioner Tentang Pembinaan Lingkungan Sehat",
+          title: "Lingkungan Sekolah",
+          description: "Quisioner Tentang Lingkungan Sekolah",
         },
       ],
     });

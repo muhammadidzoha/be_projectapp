@@ -11,6 +11,8 @@ import TeacherRoutes from "./TeacherRoute.js";
 import ClassesRoutes from "./ClassesRoute.js";
 import FamilyRoutes from "./FamilyRoute.js";
 import JobRoutes from "./JobRoute.js";
+import StudentRoutes from "./StudentRoute.js";
+import ResponsesRoutes from "./ResponseQuesionerRoute.js";
 
 const router = Router();
 
@@ -26,5 +28,7 @@ router.use("/api", TeacherRoutes);
 router.use("/api", ClassesRoutes);
 router.use("/api", FamilyRoutes);
 router.use("/api", JobRoutes);
+router.use("/api", StudentRoutes);
+router.use("/api", ResponsesRoutes);
 
 export default router;

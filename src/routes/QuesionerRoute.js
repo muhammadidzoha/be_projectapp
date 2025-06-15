@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  getAllQuestionByQuesionerId,
   getQuesioners,
   getQuestion,
   getQuestionByQuesionerId,
@@ -11,6 +12,7 @@ const router = Router();
 router.get("/quesioners", getQuesioners);
 router.get("/questions", getQuestion);
 router.get("/questions/:id", getQuestionByQuesionerId);
+router.get("/question/:id", getAllQuestionByQuesionerId);
 router.put("/questions/:id", updateQuestion);
 
 export default router;

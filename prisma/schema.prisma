@@ -60,11 +60,12 @@ model Institution {
 
   city             City?           @relation("CityInstitution", fields: [city_id], references: [id])
   province         Province?       @relation("ProvinceInstitution", fields: [province_id], references: [id])
-  user             User?           @relation("UserInstitution", fields: [user_id], references: [id])
+  user             User?           @relation("UserInstitution", fields: [user_id], references: [id], onDelete: Cascade)
   institution_type InstitutionType @relation("InstitutionType", fields: [type], references: [id])
   teachers         Teacher[]       @relation("InstitutionTeacher")
   familyMember     FamilyMember[]  @relation("FamilyMemberInstitution")
   student          Student[]       @relation("StudentInstitution")
+  Response         Response[]      @relation("InstitutionResponse")
 
   @@map("institutions")
 }
@@ -114,6 +115,7 @@ model Quesioner {
   updated_at  DateTime @default(now()) @db.Timestamp(2)
 
   questions Question[] @relation("QuesionerQuestions")
+  Response  Response[] @relation("QuesionerResponse")
 
   @@map("quesioners")
 }
@@ -166,8 +168,8 @@ model Teacher {
   created_at DateTime @default(now()) @db.Timestamp(2)
   updated_at DateTime @default(now()) @db.Timestamp(2)
 
-  user        User?       @relation("UserTeacher", fields: [user_id], references: [id])
-  institution Institution @relation("InstitutionTeacher", fields: [school_id], references: [id])
+  user        User?       @relation("UserTeacher", fields: [user_id], references: [id], onDelete: Cascade)
+  institution Institution @relation("InstitutionTeacher", fields: [school_id], references: [id], onDelete: Cascade)
   classes     Class[]     @relation("TeacherClass")
 
   @@map("teachers")
@@ -194,7 +196,7 @@ model Family {
   updated_at DateTime @default(now()) @db.Timestamp(2)
   userId     String   @unique @db.VarChar(255)
 
-  user         User           @relation("UserFamily", fields: [userId], references: [id])
+  user         User           @relation("UserFamily", fields: [userId], references: [id], onDelete: Cascade)
   familyMember FamilyMember[] @relation("FamilyMemberFamily")
 
   @@map("families")
@@ -240,12 +242,13 @@ model FamilyMember {
   createdAt     DateTime  @default(now()) @db.Timestamp(2)
   updatedAt     DateTime  @default(now()) @db.Timestamp(2)
 
-  family      Family       @relation("FamilyMemberFamily", fields: [familyId], references: [id])
-  job         Job?         @relation("FamilyMemberJob", fields: [jobId], references: [id])
-  residence   Residence    @relation("FamilyMemberResidence", fields: [residenceId], references: [id])
+  family      Family       @relation("FamilyMemberFamily", fields: [familyId], references: [id], onDelete: Cascade)
+  job         Job?         @relation("FamilyMemberJob", fields: [jobId], references: [id], onDelete: SetNull)
+  residence   Residence    @relation("FamilyMemberResidence", fields: [residenceId], references: [id], onDelete: Cascade)
   nutrition   Nutrition[]  @relation("FamilyMemberNutrition")
-  institution Institution? @relation("FamilyMemberInstitution", fields: [institutionId], references: [id])
+  institution Institution? @relation("FamilyMemberInstitution", fields: [institutionId], references: [id], onDelete: SetNull)
   student     Student?     @relation("StudentFamilyMember")
+  Response    Response[]   @relation("FamilyMemberResponse")
 
   @@map("family_members")
 }
@@ -294,7 +297,7 @@ model Job {
   createdAt DateTime @default(now()) @db.Timestamp(2)
   updatedAt DateTime @default(now()) @db.Timestamp(2)
 
-  jobType      JobType        @relation("JobTypeJob", fields: [jobTypeId], references: [id])
+  jobType      JobType        @relation("JobTypeJob", fields: [jobTypeId], references: [id], onDelete: Cascade)
   familyMember FamilyMember[] @relation("FamilyMemberJob")
 
   @@map("jobs")
@@ -329,9 +332,9 @@ model Nutrition {
   createdBy         String   @db.VarChar(255)
   nutritionStatusId Int?     @db.Int
 
-  nutritionStatus NutritionStatus? @relation("NutritionStatus", fields: [nutritionStatusId], references: [id])
-  user            User             @relation("UserNutrition", fields: [createdBy], references: [id])
-  familyMember    FamilyMember     @relation("FamilyMemberNutrition", fields: [familyMemberId], references: [id])
+  nutritionStatus NutritionStatus? @relation("NutritionStatus", fields: [nutritionStatusId], references: [id], onDelete: SetNull)
+  user            User             @relation("UserNutrition", fields: [createdBy], references: [id], onDelete: Cascade)
+  familyMember    FamilyMember     @relation("FamilyMemberNutrition", fields: [familyMemberId], references: [id], onDelete: Cascade)
 
   @@map("nutritions")
 }
@@ -363,11 +366,43 @@ model Student {
   semester       String @db.VarChar(255)
   classId        Int    @db.Int
 
-  institution  Institution  @relation("StudentInstitution", fields: [schoolId], references: [id])
-  familyMember FamilyMember @relation("StudentFamilyMember", fields: [familyMemberId], references: [id])
-  class        Class?       @relation("ClassStudent", fields: [classId], references: [id])
+  institution  Institution  @relation("StudentInstitution", fields: [schoolId], references: [id], onDelete: Cascade)
+  familyMember FamilyMember @relation("StudentFamilyMember", fields: [familyMemberId], references: [id], onDelete: Cascade)
+  class        Class?       @relation("ClassStudent", fields: [classId], references: [id], onDelete: Cascade)
 
   @@map("students")
+}
+
+model Response {
+  id             String   @id @default(uuid())
+  quisionerId    Int      @db.Int
+  created_at     DateTime @default(now()) @db.Timestamp(2)
+  totalScore     Int?     @default(0) @db.Int
+  familyMemberId String?  @db.VarChar(255)
+  institutionId  Int?     @db.Int
+
+  quesioner    Quesioner     @relation("QuesionerResponse", fields: [quisionerId], references: [id], onDelete: Cascade)
+  answers      Answer[]      @relation("ResponseAnswers")
+  familyMember FamilyMember? @relation("FamilyMemberResponse", fields: [familyMemberId], references: [id], onDelete: Cascade)
+  Institution  Institution?  @relation("InstitutionResponse", fields: [institutionId], references: [id], onDelete: SetNull)
+
+  @@map("responses")
+}
+
+model Answer {
+  id            Int      @id @default(autoincrement()) @db.Int
+  questionId    Int      @unique() @db.Int
+  responseId    String   @db.VarChar(255)
+  score         Int?     @default(0) @db.Int
+  boolean_value Boolean?
+  text_value    String?
+  option_id     Int?
+  scaleValue    Int?
+
+  response Response @relation("ResponseAnswers", fields: [responseId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, responseId])
+  @@map("answers")
 }
 
 //** all attributes for the family case end

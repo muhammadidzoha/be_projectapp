@@ -96,7 +96,7 @@ export const getTeachers = async (req, res) => {
       "Teachers retrieved successfully"
     );
   } catch (error) {
-    return errorResponse(res, error, "Internal server error");
+    return errorResponse(res, error, "Failed to retrieve teachers");
   }
 };
 
@@ -127,16 +127,6 @@ export const createTeacher = async (req, res) => {
       return errorResponse(res, 404, "Institusi tidak ditemukan");
     }
 
-    const existingUser = await prisma.user.findFirst({
-      where: {
-        OR: [{ username }, { email }],
-      },
-    });
-
-    if (existingUser) {
-      return errorResponse(res, null, "Username atau email sudah digunakan");
-    }
-
     if (classId) {
       const existingClass = await prisma.class.findFirst({
         where: { id: classId },
@@ -153,72 +143,164 @@ export const createTeacher = async (req, res) => {
       return errorResponse(res, null, "ID kelas harus disertakan");
     }
 
-    const newTeacher = await prisma.user.create({
-      data: {
-        username,
-        email,
-        password: hashPassword,
-        role_id: role_id,
-        teacher: {
-          create: {
-            fullName,
-            role,
-            address,
-            phone,
-            school_id: institution.id,
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        OR: [{ username }, { email }],
+      },
+      include: { teacher: true },
+    });
+
+    if (existingUser) {
+      if (existingUser.teacher) {
+        return errorResponse(res, null, "Username atau email sudah digunakan");
+      }
+
+      const updateUser = await prisma.user.update({
+        where: { id: existingUser.id },
+        data: {
+          teacher: {
+            create: {
+              fullName,
+              role,
+              address,
+              phone,
+              institution: {
+                connect: {
+                  id: institution.id,
+                },
+              },
+            },
           },
         },
-      },
-      select: {
-        id: true,
-        username: true,
-        email: true,
-        role_id: true,
-        teacher: {
-          select: {
-            id: true,
-            fullName: true,
-            role: true,
-            institution: {
-              select: {
-                id: true,
-                name: true,
-                institution_type: {
-                  select: {
-                    id: true,
-                    name: true,
+        select: {
+          id: true,
+          username: true,
+          email: true,
+          role_id: true,
+          teacher: {
+            select: {
+              id: true,
+              fullName: true,
+              role: true,
+              institution: {
+                select: {
+                  id: true,
+                  name: true,
+                  institution_type: {
+                    select: {
+                      id: true,
+                      name: true,
+                    },
                   },
-                },
-                address: true,
-                city: {
-                  select: {
-                    id: true,
-                    name: true,
+                  address: true,
+                  city: {
+                    select: {
+                      id: true,
+                      name: true,
+                    },
                   },
-                },
-                province: {
-                  select: {
-                    id: true,
-                    name: true,
+                  province: {
+                    select: {
+                      id: true,
+                      name: true,
+                    },
                   },
                 },
               },
             },
           },
         },
-      },
-    });
+      });
 
-    await prisma.class.update({
-      where: {
-        id: classId,
-      },
-      data: {
-        teacher_id: newTeacher.teacher.id,
-      },
-    });
+      await prisma.class.update({
+        where: {
+          id: classId,
+        },
+        data: {
+          teacher_id: updateUser.teacher.id,
+        },
+      });
+      return successResponse(
+        res,
+        updateTeacher,
+        "Berhasil menambahkan wali kelas"
+      );
+    } else {
+      const newTeacher = await prisma.user.create({
+        data: {
+          username,
+          email,
+          password: hashPassword,
+          role_id: role_id,
+          teacher: {
+            create: {
+              fullName,
+              role,
+              address,
+              phone,
+              institution: {
+                connect: {
+                  id: institution.id,
+                },
+              },
+            },
+          },
+        },
+        select: {
+          id: true,
+          username: true,
+          email: true,
+          role_id: true,
+          teacher: {
+            select: {
+              id: true,
+              fullName: true,
+              role: true,
+              institution: {
+                select: {
+                  id: true,
+                  name: true,
+                  institution_type: {
+                    select: {
+                      id: true,
+                      name: true,
+                    },
+                  },
+                  address: true,
+                  city: {
+                    select: {
+                      id: true,
+                      name: true,
+                    },
+                  },
+                  province: {
+                    select: {
+                      id: true,
+                      name: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
 
-    return successResponse(res, newTeacher, "Berhasil menambahkan wali kelas");
+      await prisma.class.update({
+        where: {
+          id: classId,
+        },
+        data: {
+          teacher_id: newTeacher.teacher.id,
+        },
+      });
+
+      return successResponse(
+        res,
+        newTeacher,
+        "Berhasil menambahkan wali kelas"
+      );
+    }
   } catch (error) {
     return errorResponse(res, error, "Error saat menambahkan wali kelas");
   }
