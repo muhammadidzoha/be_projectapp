@@ -212,6 +212,63 @@ export const getFamilyMember = async (req, res) => {
   }
 };
 
+export const getParentsByFamilyMemberId = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const anak = await prisma.familyMember.findFirst({
+      where: {
+        id,
+      },
+    });
+
+    if (!anak) {
+      return errorResponse(res, null, "Anak tidak ditemukan");
+    }
+
+    const familyId = anak.familyId;
+
+    const orangTua = await prisma.familyMember.findMany({
+      where: {
+        familyId: familyId,
+        relation: { in: ["AYAH", "IBU"] },
+      },
+      select: {
+        id: true,
+        fullName: true,
+        birthDate: true,
+        gender: true,
+        relation: true,
+        phone: true,
+        education: true,
+        job: {
+          select: {
+            id: true,
+            income: true,
+            jobType: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+        residence: {
+          select: {
+            id: true,
+            status: true,
+            address: true,
+          },
+        },
+      },
+    });
+
+    return successResponse(res, orangTua, "Parent data successfully retrieved");
+  } catch (error) {
+    return errorResponse(res, error, "Failed to retrieve family member");
+  }
+};
+
 export const createFamilyMember = async (req, res) => {
   try {
     const user = req.user;

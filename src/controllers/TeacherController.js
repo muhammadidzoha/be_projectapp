@@ -385,10 +385,6 @@ export const deleteTeacher = async (req, res) => {
       });
     }
 
-    await prisma.teacher.delete({
-      where: { id },
-    });
-
     return successResponse(res, null, "Guru berhasil dihapus");
   } catch (error) {
     return errorResponse(res, error, "Error saat menghapus teacher");

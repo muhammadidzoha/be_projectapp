@@ -25,11 +25,12 @@ model User {
   created_at    DateTime @default(now()) @db.Timestamp(2)
   updated_at    DateTime @default(now()) @db.Timestamp(2)
 
-  role        Role         @relation("UserRoles", fields: [role_id], references: [id])
-  institution Institution? @relation("UserInstitution")
-  teacher     Teacher?     @relation("UserTeacher")
-  family      Family?      @relation("UserFamily")
-  nutrition   Nutrition[]  @relation("UserNutrition")
+  role           Role             @relation("UserRoles", fields: [role_id], references: [id])
+  institution    Institution?     @relation("UserInstitution")
+  teacher        Teacher?         @relation("UserTeacher")
+  family         Family?          @relation("UserFamily")
+  nutrition      Nutrition[]      @relation("UserNutrition")
+  recommendation Recommendation[] @relation("UserSubmittedRecommendations")
 
   @@map("users")
 }
@@ -366,9 +367,10 @@ model Student {
   semester       String @db.VarChar(255)
   classId        Int    @db.Int
 
-  institution  Institution  @relation("StudentInstitution", fields: [schoolId], references: [id], onDelete: Cascade)
-  familyMember FamilyMember @relation("StudentFamilyMember", fields: [familyMemberId], references: [id], onDelete: Cascade)
-  class        Class?       @relation("ClassStudent", fields: [classId], references: [id], onDelete: Cascade)
+  institution    Institution      @relation("StudentInstitution", fields: [schoolId], references: [id], onDelete: Cascade)
+  familyMember   FamilyMember     @relation("StudentFamilyMember", fields: [familyMemberId], references: [id], onDelete: Cascade)
+  class          Class?           @relation("ClassStudent", fields: [classId], references: [id], onDelete: Cascade)
+  recommendation Recommendation[] @relation("FamilyMemberRecommendation")
 
   @@map("students")
 }
@@ -406,3 +408,43 @@ model Answer {
 }
 
 //** all attributes for the family case end
+
+enum RecommendationStatus {
+  PENDING
+  PROCESSED
+  COMPLETED
+}
+
+model Recommendation {
+  id            String               @id @default(uuid())
+  studentId     String
+  submittedById String
+  status        RecommendationStatus @default(PENDING)
+  pdfUrl        String?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @default(now())
+
+  student      Student        @relation("FamilyMemberRecommendation", fields: [studentId], references: [id], onDelete: Cascade)
+  submittedBy  User           @relation("UserSubmittedRecommendations", fields: [submittedById], references: [id])
+  Intervention Intervention[] @relation("RecommendationIntervention")
+
+  @@map("recommendations")
+}
+
+enum InterventionFor {
+  SCHOOL
+  PARENT
+}
+
+model Intervention {
+  id               String          @id @default(uuid())
+  recommendationId String
+  forType          InterventionFor
+  options          Json
+  notes            String?
+  createdAt        DateTime        @default(now())
+
+  recommendation Recommendation @relation("RecommendationIntervention", fields: [recommendationId], references: [id], onDelete: Cascade)
+
+  @@map("interventions")
+}

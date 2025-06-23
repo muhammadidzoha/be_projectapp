@@ -5,6 +5,7 @@ import {
   getFamily,
   getFamilyMember,
   getFamilyMemberByUser,
+  getParentsByFamilyMemberId,
   updateFamilyMember,
 } from "../controllers/FamilyController.js";
 import { verifyToken } from "../middelware/verifyToken.js";
@@ -14,6 +15,7 @@ const router = Router();
 router.get("/family", getFamily);
 router.get("/families/user", verifyToken, getFamilyMemberByUser);
 router.get("/families", getFamilyMember);
+router.get("/families/:id/parents", getParentsByFamilyMemberId);
 router.post("/families/user", verifyToken, createFamilyMember);
 router.put("/families/:id", updateFamilyMember);
 router.delete("/families/:id", deleteFamilyMember);

@@ -13,6 +13,7 @@ import FamilyRoutes from "./FamilyRoute.js";
 import JobRoutes from "./JobRoute.js";
 import StudentRoutes from "./StudentRoute.js";
 import ResponsesRoutes from "./ResponseQuesionerRoute.js";
+import RecommendationRoutes from "./RecommendationRoute.js";
 
 const router = Router();
 
@@ -30,5 +31,6 @@ router.use("/api", FamilyRoutes);
 router.use("/api", JobRoutes);
 router.use("/api", StudentRoutes);
 router.use("/api", ResponsesRoutes);
+router.use("/api", RecommendationRoutes);
 
 export default router;
