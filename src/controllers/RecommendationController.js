@@ -81,6 +81,7 @@ export const getRecomendations = async (req, res) => {
                 fullName: true,
                 birthDate: true,
                 gender: true,
+                familyId: true,
                 residence: {
                   select: {
                     id: true,
@@ -203,5 +204,212 @@ export const changeStatusToProcessed = async (req, res) => {
     );
   } catch (error) {
     return errorResponse(res, error, "Gagal memasukan ke dalam antrian proses");
+  }
+};
+
+export const getResponseParent = async (req, res) => {
+  try {
+    const { userId } = req.body;
+
+    const page = parseInt(req.query.page) || 0;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || "";
+    const offset = limit * page;
+
+    const family = await prisma.family.findFirst({
+      where: {
+        userId,
+      },
+    });
+
+    if (!family) {
+      return errorResponse(res, 404, "Family not found");
+    }
+
+    const familyMember = await prisma.familyMember.findFirst({
+      where: {
+        familyId: family.id,
+        OR: [
+          {
+            relation: "IBU",
+          },
+          {
+            relation: "AYAH",
+          },
+        ],
+      },
+    });
+
+    if (!familyMember) {
+      return errorResponse(res, 404, "Family member not found");
+    }
+
+    const response = await prisma.response.findMany({
+      where: {
+        familyMemberId: familyMember.id,
+      },
+      include: {
+        answers: true,
+      },
+    });
+
+    const questions = await prisma.question.findMany({
+      where: {
+        quesioner_id: id,
+        title: {
+          contains: search,
+        },
+      },
+      select: {
+        id: true,
+        quesioner_id: true,
+        title: true,
+        type: true,
+        options: {
+          select: {
+            id: true,
+            title: true,
+            score: true,
+          },
+        },
+      },
+    });
+
+    const questionIds = questions.map((q) => q.id);
+
+    const totalRows = await prisma.answer.count({
+      where: {
+        responseId: response.id,
+        questionId: {
+          in: questionIds,
+        },
+      },
+    });
+
+    const totalPage = Math.ceil(totalRows / limit);
+    const answers = await prisma.answer.findMany({
+      where: {
+        responseId: response.id,
+        questionId: {
+          in: questionIds,
+        },
+      },
+      skip: offset,
+      take: limit,
+      orderBy: {
+        id: "asc",
+      },
+    });
+
+    return successResponse(
+      res,
+      {
+        totalRows,
+        totalPage,
+        page,
+        limit,
+        questions,
+        answers,
+      },
+      "Berhasil mendapatkan data"
+    );
+  } catch (error) {
+    return errorResponse(res, error, "Failed to get response");
+  }
+};
+
+export const getResponseInstitution = async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const quesionerId = Number(req.params.id);
+
+    const page = parseInt(req.query.page) || 0;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || "";
+    const offset = limit * page;
+
+    const institution = await prisma.institution.findFirst({
+      where: {
+        user_id: userId,
+      },
+    });
+
+    if (!institution) {
+      return errorResponse(res, 404, "Institution not found");
+    }
+
+    const response = await prisma.response.findFirst({
+      where: {
+        institutionId: institution.id,
+      },
+    });
+
+    if (!response) {
+      return errorResponse(res, 404, "Response not found");
+    }
+
+    const questions = await prisma.question.findMany({
+      where: {
+        quesioner_id: quesionerId,
+        title: {
+          contains: search,
+        },
+      },
+      select: {
+        id: true,
+        quesioner_id: true,
+        title: true,
+        type: true,
+        options: {
+          select: {
+            id: true,
+            title: true,
+            score: true,
+          },
+        },
+      },
+    });
+
+    const questionIds = questions.map((q) => q.id);
+
+    const totalRows = await prisma.answer.count({
+      where: {
+        responseId: response.id,
+        questionId: {
+          in: questionIds,
+        },
+      },
+    });
+
+    const totalPage = Math.ceil(totalRows / limit);
+
+    const answers = await prisma.answer.findMany({
+      where: {
+        responseId: response.id,
+        questionId: {
+          in: questionIds,
+        },
+      },
+      skip: offset,
+      take: limit,
+      orderBy: {
+        id: "asc",
+      },
+    });
+
+    return successResponse(
+      res,
+      {
+        totalRows,
+        totalPage,
+        page,
+        limit,
+        questions,
+        answers,
+      },
+      "Berhasil mendapatkan data"
+    );
+  } catch (error) {
+    return errorResponse(res, error, "Failed to get response");
   }
 };

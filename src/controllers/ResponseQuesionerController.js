@@ -44,8 +44,23 @@ export const getResponseQuesioner = async (req, res) => {
     const response = await prisma.response.findFirst({
       where: {
         familyMemberId: familyMember.id,
+        quisionerId: id,
+      },
+      include: {
+        answers: true,
       },
     });
+
+    if (!response) {
+      return res.json({
+        totalRows: 0,
+        totalPage: 0,
+        page: 0,
+        limit: 10,
+        questions: [],
+        answers: [],
+      });
+    }
 
     const questions = await prisma.question.findMany({
       where: {
@@ -267,9 +282,22 @@ export const checkAnsweredQuesioner = async (req, res) => {
     const response = await prisma.response.findFirst({
       where: {
         familyMemberId: familyMember.id,
+        quisionerId: id,
+      },
+      include: {
+        answers: true,
       },
     });
-    if (!response) return errorResponse(res, 404, "Response not found");
+
+    if (!response) {
+      return res.json({
+        answers: [],
+        questions: [],
+        page: 0,
+        totalPage: 0,
+        totalRows: 0,
+      });
+    }
 
     const totalQuestions = await prisma.question.count({
       where: { quesioner_id: id },
@@ -352,11 +380,19 @@ export const getResponseQuesionerInstitution = async (req, res) => {
     const response = await prisma.response.findFirst({
       where: {
         institutionId: institution.id,
+        quisionerId: quesionerId,
       },
     });
 
     if (!response) {
-      return errorResponse(res, 404, "Response not found");
+      return res.json({
+        totalRows: 0,
+        totalPage: 0,
+        page: 0,
+        limit: 10,
+        questions: [],
+        answers: [],
+      });
     }
 
     const questions = await prisma.question.findMany({

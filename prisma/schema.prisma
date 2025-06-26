@@ -393,7 +393,7 @@ model Response {
 
 model Answer {
   id            Int      @id @default(autoincrement()) @db.Int
-  questionId    Int      @unique() @db.Int
+  questionId    Int      @db.Int
   responseId    String   @db.VarChar(255)
   score         Int?     @default(0) @db.Int
   boolean_value Boolean?
