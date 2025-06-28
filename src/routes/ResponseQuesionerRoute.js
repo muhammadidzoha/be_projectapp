@@ -6,6 +6,8 @@ import {
   createResponseQuesionerInstitution,
   getResponseQuesioner,
   getResponseQuesionerInstitution,
+  showResponseForInstitution,
+  showResponseForParent,
   updateResponseQuesioner,
 } from "../controllers/ResponseQuesionerController.js";
 import { verifyToken } from "../middelware/verifyToken.js";
@@ -17,6 +19,11 @@ router.get(
   "/response/institution/:id",
   verifyToken,
   getResponseQuesionerInstitution
+);
+router.get("/response/show/:userId/:id", showResponseForParent);
+router.get(
+  "/response/show/institution/:user_id/:id",
+  showResponseForInstitution
 );
 router.get("/response/checking/:id", verifyToken, checkAnsweredQuesioner);
 router.get(
