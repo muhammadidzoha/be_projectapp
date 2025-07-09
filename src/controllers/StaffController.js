@@ -128,7 +128,6 @@ export const updateStafff = async (req, res) => {
     const user = req.user;
     const institutionId = await getUserInstitution(user.id);
     const { fullName, address, phone, username, email, password } = req.body;
-    const hashedPassword = await argon2.hash(password);
     const isUserExist = await prisma.staff.findUnique({
       where: {
         id,
@@ -156,9 +155,9 @@ export const updateStafff = async (req, res) => {
           id: isUserExist.user_id,
         },
         data: {
-          username,
-          email,
-          password: hashedPassword,
+          ...(username && { username }),
+          ...(email && { email }),
+          ...(password && { password: await argon2.hash(password) }),
         },
         include: {
           staff: true,
@@ -172,7 +171,7 @@ export const updateStafff = async (req, res) => {
       data: updatedUser,
     });
   } catch (err) {
-    return errorResponse(res, err, "Gagal menambahkan staff");
+    return errorResponse(res, err, "Gagal Mengubah staff");
   }
 };
 
