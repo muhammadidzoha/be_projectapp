@@ -413,3 +413,447 @@ export const getResponseInstitution = async (req, res) => {
     return errorResponse(res, error, "Failed to get response");
   }
 };
+
+export const createIntervention = async (req, res) => {
+  try {
+    const user = req.user;
+    if (user.role !== "healthcare") {
+      throw new Error("User not have access to this resource");
+    }
+    const { id } = req.params;
+    if (!id) {
+      throw new Error("RecommendationId is required in params");
+    }
+    const { content, forType, notes } = req.body;
+    const intervention = await prisma.$transaction(async (trx) => {
+      const intervention = await trx.intervention.createMany({
+        data: [
+          {
+            forType,
+            notes,
+            options: content,
+            recommendationId: id,
+            user_id: user.id,
+          },
+          {
+            forType: forType === "PARENT" ? "SCHOOL" : "PARENT",
+            notes,
+            options: content,
+            recommendationId: id,
+            user_id: user.id,
+          },
+        ],
+      });
+      await trx.recommendation.update({
+        where: {
+          id,
+        },
+        data: {
+          status: "COMPLETED",
+        },
+      });
+
+      return intervention;
+    });
+
+    res.status(201).json({
+      status: "Success",
+      message: "Intervention created",
+      data: intervention,
+    });
+  } catch (err) {
+    console.log(err.message);
+    return errorResponse(res, err, "Failed to get response");
+  }
+};
+
+export const getSingleRecommendation = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const recommendation = await prisma.recommendation.findUnique({
+      where: {
+        id,
+      },
+      include: {
+        submittedBy: {
+          select: {
+            institution: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+        Intervention: true,
+        student: {
+          include: {
+            class: true,
+            familyMember: {
+              include: {
+                family: {
+                  include: {
+                    user: {
+                      include: { family: { include: { familyMember: true } } },
+                    },
+                  },
+                },
+                residence: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    res.status(200).json({
+      status: "Success",
+      message: "Recommendation fetched",
+      data: recommendation,
+    });
+  } catch (err) {
+    console.log({ err });
+    return errorResponse(res, err, "Failed to get response");
+  }
+};
+
+export const getInterventionsBelongToInstitution = async (req, res) => {
+  try {
+    const user = req.user;
+    const page = parseInt(req.query.page) || 0;
+    const limit = parseInt(req.query.limit) || 10;
+    const keyword = req.query.keyword ?? "";
+    const skip = limit * page;
+    const userInstitution = await prisma.user.findUnique({
+      where: {
+        id: user.id,
+      },
+      select: {
+        institution: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
+    if (!userInstitution) {
+      throw new Error("user not found");
+    }
+    const interventions = await prisma.intervention.findMany({
+      where: {
+        user: {
+          institution: {
+            id: userInstitution.institution.id,
+          },
+        },
+        ...(keyword !== "" && {
+          recommendation: {
+            student: {
+              familyMember: {
+                fullName: {
+                  contains: keyword,
+                },
+              },
+            },
+          },
+        }),
+      },
+      distinct: ["recommendationId"],
+      select: {
+        recommendation: {
+          select: {
+            student: {
+              select: {
+                nis: true,
+                class: {
+                  select: {
+                    name: true,
+                  },
+                },
+                familyMember: {
+                  select: {
+                    fullName: true,
+                    birthDate: true,
+                    gender: true,
+                    residence: {
+                      select: {
+                        address: true,
+                      },
+                    },
+                    family: {
+                      select: {
+                        user: {
+                          select: {
+                            family: {
+                              select: {
+                                familyMember: {
+                                  select: {
+                                    fullName: true,
+                                  },
+                                },
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            id: true,
+            status: true,
+            createdAt: true,
+            submittedBy: {
+              select: {
+                institution: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        id: true,
+        forType: true,
+        notes: true,
+        options: true,
+        createdAt: true,
+        user: {
+          select: {
+            institution: {
+              select: {
+                name: true,
+                address: true,
+                phone: true,
+                email: true,
+              },
+            },
+            username: true,
+          },
+        },
+      },
+      skip,
+      orderBy: {
+        recommendation: {
+          updatedAt: "desc",
+        },
+      },
+    });
+    const totalPages = Math.ceil(interventions.length / limit);
+
+    res.status(200).json({
+      status: "Success",
+      message: "Interventions Belongs to Institution fetched",
+      data: {
+        totalPages,
+        skip,
+        page,
+        limit,
+        interventions: interventions.map((val) => ({
+          ...val,
+          options: JSON.parse(val.options),
+        })),
+      },
+    });
+  } catch (err) {
+    console.log({ err });
+    return errorResponse(res, err, "Failed to get response");
+  }
+};
+
+export const getInterventionsBelongToFamily = async (req, res) => {
+  try {
+    const user = req.user;
+    if (!user) {
+      throw new Error("user not found");
+    }
+    const page = parseInt(req.query.page) || 0;
+    const limit = parseInt(req.query.limit) || 10;
+    const keyword = req.query.keyword ?? "";
+    const skip = limit * page;
+    const interventions = await prisma.intervention.findMany({
+      where: {
+        recommendation: {
+          student: {
+            familyMember: {
+              family: {
+                userId: user.id,
+              },
+            },
+          },
+        },
+        ...(keyword !== "" && {
+          recommendation: {
+            student: {
+              familyMember: {
+                fullName: {
+                  contains: keyword,
+                },
+              },
+            },
+          },
+        }),
+        forType: "PARENT",
+      },
+      select: {
+        recommendation: {
+          select: {
+            student: {
+              select: {
+                nis: true,
+                class: {
+                  select: {
+                    name: true,
+                  },
+                },
+                familyMember: {
+                  select: {
+                    fullName: true,
+                    birthDate: true,
+                    gender: true,
+                    residence: {
+                      select: {
+                        address: true,
+                      },
+                    },
+                    family: {
+                      select: {
+                        user: {
+                          select: {
+                            family: {
+                              select: {
+                                familyMember: {
+                                  select: {
+                                    fullName: true,
+                                  },
+                                },
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            id: true,
+            status: true,
+            createdAt: true,
+            submittedBy: {
+              select: {
+                institution: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        id: true,
+        forType: true,
+        notes: true,
+        options: true,
+        createdAt: true,
+        user: {
+          select: {
+            institution: {
+              select: {
+                name: true,
+                email: true,
+                address: true,
+                phone: true,
+              },
+            },
+            username: true,
+          },
+        },
+      },
+      skip,
+      orderBy: {
+        recommendation: {
+          updatedAt: "desc",
+        },
+      },
+    });
+    const totalPages = interventions.length;
+
+    res.status(200).json({
+      status: "Success",
+      message: "Intervention belongs to family fetched",
+      data: {
+        totalPages,
+        skip,
+        page,
+        limit,
+        interventions: interventions.map((val) => ({
+          ...val,
+          options: JSON.parse(val.options),
+        })),
+      },
+    });
+  } catch (err) {
+    console.log({ err });
+    return errorResponse(res, err, "Failed to get response");
+  }
+};
+
+export const getInterventionById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      throw new Error("Id is required");
+    }
+    const intervention = await prisma.intervention.findUnique({
+      where: {
+        id,
+      },
+    });
+    if (!intervention) {
+      throw new Error(`Intervention with id ${id} is not found`);
+    }
+    res.status(200).json({
+      status: "Success",
+      message: "Intervention retrieved",
+      data: {
+        ...intervention,
+        options: JSON.parse(intervention.options),
+      },
+    });
+  } catch (err) {
+    return errorResponse(res, err, "Failed to get response");
+  }
+};
+
+export const deleteIntervention = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      throw new Error("Id is required");
+    }
+    const intervention = await prisma.intervention.findUnique({
+      where: {
+        id,
+      },
+    });
+    if (!intervention) {
+      throw new Error(`Intervention with id ${id} is not found`);
+    }
+    await prisma.intervention.delete({
+      where: {
+        id,
+      },
+    });
+    res.status(200).json({
+      status: "Success",
+      message: "Intervention deleted",
+      data: intervention,
+    });
+  } catch (err) {
+    return errorResponse(res, err, "Failed to get response");
+  }
+};

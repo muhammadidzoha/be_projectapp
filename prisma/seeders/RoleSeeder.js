@@ -12,6 +12,7 @@ export const seedRoles = async () => {
           { name: "school" },
           { name: "teacher" },
           { name: "healthcare" },
+          { name: "staff" },
         ],
       },
     });
@@ -28,6 +29,7 @@ export const seedRoles = async () => {
         { name: "school" },
         { name: "teacher" },
         { name: "healthcare" },
+        { name: "staff" },
       ],
       skipDuplicates: false,
     });

@@ -97,6 +97,14 @@ export const getUserById = async (req, res) => {
             name: true,
           },
         },
+        institution: {
+          select: {
+            name: true,
+            address: true,
+            email: true,
+            phone: true,
+          },
+        },
       },
     });
     if (!user) {
