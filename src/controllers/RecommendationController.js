@@ -603,3 +603,32 @@ export const getInterventionById = async (req, res) => {
     return errorResponse(res, err, "Failed to get response");
   }
 };
+
+export const deleteIntervention = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      throw new Error("Id is required");
+    }
+    const intervention = await prisma.intervention.findUnique({
+      where: {
+        id,
+      },
+    });
+    if (!intervention) {
+      throw new Error(`Intervention with id ${id} is not found`);
+    }
+    await prisma.intervention.delete({
+      where: {
+        id,
+      },
+    });
+    res.status(200).json({
+      status: "Success",
+      message: "Intervention deleted",
+      data: intervention,
+    });
+  } catch (err) {
+    return errorResponse(res, err, "Failed to get response");
+  }
+};
