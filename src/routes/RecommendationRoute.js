@@ -10,6 +10,7 @@ import {
   getInterventionsBelongToInstitution,
   getInterventionsBelongToFamily,
   getInterventionById,
+  deleteIntervention,
 } from "../controllers/RecommendationController.js";
 import { verifyToken } from "../middelware/verifyToken.js";
 
@@ -29,7 +30,7 @@ router.post(
 
 // INTERVENTIONS
 router.get(
-  "/interventions/schools",
+  "/interventions/institutions",
   verifyToken,
   getInterventionsBelongToInstitution
 );
@@ -39,5 +40,6 @@ router.get(
   getInterventionsBelongToFamily
 );
 router.get("/interventions/:id", getInterventionById);
+router.delete("/interventions/:id", deleteIntervention);
 
 export default router;

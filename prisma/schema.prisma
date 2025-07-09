@@ -439,7 +439,7 @@ enum InterventionFor {
 
 model Intervention {
   id               String          @id @default(uuid())
-  recommendationId String @unique
+  recommendationId String
   forType          InterventionFor
   options          Json
   notes            String?

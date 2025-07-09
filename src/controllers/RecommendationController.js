@@ -426,14 +426,23 @@ export const createIntervention = async (req, res) => {
     }
     const { content, forType, notes } = req.body;
     const intervention = await prisma.$transaction(async (trx) => {
-      const intervention = await trx.intervention.create({
-        data: {
-          forType,
-          notes,
-          options: content,
-          recommendationId: id,
-          user_id: user.id,
-        },
+      const intervention = await trx.intervention.createMany({
+        data: [
+          {
+            forType,
+            notes,
+            options: content,
+            recommendationId: id,
+            user_id: user.id,
+          },
+          {
+            forType: forType === "PARENT" ? "SCHOOL" : "PARENT",
+            notes,
+            options: content,
+            recommendationId: id,
+            user_id: user.id,
+          },
+        ],
       });
       await trx.recommendation.update({
         where: {
@@ -510,7 +519,6 @@ export const getSingleRecommendation = async (req, res) => {
 export const getInterventionsBelongToInstitution = async (req, res) => {
   try {
     const user = req.user;
-    console.log({ user });
     const userInstitution = await prisma.user.findUnique({
       where: {
         id: user.id,
@@ -535,12 +543,79 @@ export const getInterventionsBelongToInstitution = async (req, res) => {
           },
         },
       },
+      distinct: ["recommendationId"],
+      select: {
+        recommendation: {
+          select: {
+            student: {
+              select: {
+                nis: true,
+                class: {
+                  select: {
+                    name: true,
+                  },
+                },
+                familyMember: {
+                  select: {
+                    fullName: true,
+                    birthDate: true,
+                    gender: true,
+                    residence: {
+                      select: {
+                        address: true,
+                      },
+                    },
+                    family: {
+                      select: {
+                        user: {
+                          select: {
+                            family: {
+                              select: {
+                                familyMember: {
+                                  select: {
+                                    fullName: true,
+                                  },
+                                },
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            id: true,
+            status: true,
+            createdAt: true,
+            submittedBy: {
+              select: {
+                institution: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        id: true,
+        forType: true,
+        notes: true,
+        options: true,
+        createdAt: true,
+      },
     });
 
     res.status(200).json({
       status: "Success",
       message: "Interventions Belongs to Institution fetched",
-      data: interventions,
+      data: interventions.map((val) => ({
+        ...val,
+        options: JSON.parse(val.options),
+      })),
     });
   } catch (err) {
     console.log({ err });
@@ -572,7 +647,10 @@ export const getInterventionsBelongToFamily = async (req, res) => {
     res.status(200).json({
       status: "Success",
       message: "Intervention belongs to family fetched",
-      data: interventions,
+      data: interventions.map((val) => ({
+        ...val,
+        options: JSON.parse(val.options),
+      })),
     });
   } catch (err) {
     console.log({ err });
@@ -597,7 +675,10 @@ export const getInterventionById = async (req, res) => {
     res.status(200).json({
       status: "Success",
       message: "Intervention retrieved",
-      data: intervention,
+      data: {
+        ...intervention,
+        options: JSON.parse(intervention.options),
+      },
     });
   } catch (err) {
     return errorResponse(res, err, "Failed to get response");
