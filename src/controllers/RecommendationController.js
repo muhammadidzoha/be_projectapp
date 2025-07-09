@@ -620,6 +620,19 @@ export const getInterventionsBelongToInstitution = async (req, res) => {
         notes: true,
         options: true,
         createdAt: true,
+        user: {
+          select: {
+            institution: {
+              select: {
+                name: true,
+                address: true,
+                phone: true,
+                email: true,
+              },
+            },
+            username: true,
+          },
+        },
       },
       skip,
       orderBy: {
@@ -656,6 +669,10 @@ export const getInterventionsBelongToFamily = async (req, res) => {
     if (!user) {
       throw new Error("user not found");
     }
+    const page = parseInt(req.query.page) || 0;
+    const limit = parseInt(req.query.limit) || 10;
+    const keyword = req.query.keyword ?? "";
+    const skip = limit * page;
     const interventions = await prisma.intervention.findMany({
       where: {
         recommendation: {
@@ -667,17 +684,117 @@ export const getInterventionsBelongToFamily = async (req, res) => {
             },
           },
         },
+        ...(keyword !== "" && {
+          recommendation: {
+            student: {
+              familyMember: {
+                fullName: {
+                  contains: keyword,
+                },
+              },
+            },
+          },
+        }),
         forType: "PARENT",
       },
+      select: {
+        recommendation: {
+          select: {
+            student: {
+              select: {
+                nis: true,
+                class: {
+                  select: {
+                    name: true,
+                  },
+                },
+                familyMember: {
+                  select: {
+                    fullName: true,
+                    birthDate: true,
+                    gender: true,
+                    residence: {
+                      select: {
+                        address: true,
+                      },
+                    },
+                    family: {
+                      select: {
+                        user: {
+                          select: {
+                            family: {
+                              select: {
+                                familyMember: {
+                                  select: {
+                                    fullName: true,
+                                  },
+                                },
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            id: true,
+            status: true,
+            createdAt: true,
+            submittedBy: {
+              select: {
+                institution: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        id: true,
+        forType: true,
+        notes: true,
+        options: true,
+        createdAt: true,
+        user: {
+          select: {
+            institution: {
+              select: {
+                name: true,
+                email: true,
+                address: true,
+                phone: true,
+              },
+            },
+            username: true,
+          },
+        },
+      },
+      skip,
+      orderBy: {
+        recommendation: {
+          updatedAt: "desc",
+        },
+      },
     });
+    const totalPages = interventions.length;
 
     res.status(200).json({
       status: "Success",
       message: "Intervention belongs to family fetched",
-      data: interventions.map((val) => ({
-        ...val,
-        options: JSON.parse(val.options),
-      })),
+      data: {
+        totalPages,
+        skip,
+        page,
+        limit,
+        interventions: interventions.map((val) => ({
+          ...val,
+          options: JSON.parse(val.options),
+        })),
+      },
     });
   } catch (err) {
     console.log({ err });
