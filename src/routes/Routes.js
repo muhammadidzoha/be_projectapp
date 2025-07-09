@@ -15,6 +15,7 @@ import StudentRoutes from "./StudentRoute.js";
 import ResponsesRoutes from "./ResponseQuesionerRoute.js";
 import RecommendationRoutes from "./RecommendationRoute.js";
 import { staffRouter } from "./StaffRoute.js";
+import { statisticRouter } from "./StatisticRouter.js";
 
 const router = Router();
 
@@ -34,5 +35,6 @@ router.use("/api", StudentRoutes);
 router.use("/api", ResponsesRoutes);
 router.use("/api", RecommendationRoutes);
 router.use("/api", staffRouter);
+router.use("/api", statisticRouter);
 
 export default router;
