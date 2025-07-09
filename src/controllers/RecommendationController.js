@@ -519,6 +519,10 @@ export const getSingleRecommendation = async (req, res) => {
 export const getInterventionsBelongToInstitution = async (req, res) => {
   try {
     const user = req.user;
+    const page = parseInt(req.query.page) || 0;
+    const limit = parseInt(req.query.limit) || 10;
+    const keyword = req.query.keyword ?? "";
+    const skip = limit * page;
     const userInstitution = await prisma.user.findUnique({
       where: {
         id: user.id,
@@ -534,7 +538,6 @@ export const getInterventionsBelongToInstitution = async (req, res) => {
     if (!userInstitution) {
       throw new Error("user not found");
     }
-    console.log({ userInstitution });
     const interventions = await prisma.intervention.findMany({
       where: {
         user: {
@@ -542,6 +545,17 @@ export const getInterventionsBelongToInstitution = async (req, res) => {
             id: userInstitution.institution.id,
           },
         },
+        ...(keyword !== "" && {
+          recommendation: {
+            student: {
+              familyMember: {
+                fullName: {
+                  contains: keyword,
+                },
+              },
+            },
+          },
+        }),
       },
       distinct: ["recommendationId"],
       select: {
@@ -607,15 +621,28 @@ export const getInterventionsBelongToInstitution = async (req, res) => {
         options: true,
         createdAt: true,
       },
+      skip,
+      orderBy: {
+        recommendation: {
+          updatedAt: "desc",
+        },
+      },
     });
+    const totalPages = Math.ceil(interventions.length / limit);
 
     res.status(200).json({
       status: "Success",
       message: "Interventions Belongs to Institution fetched",
-      data: interventions.map((val) => ({
-        ...val,
-        options: JSON.parse(val.options),
-      })),
+      data: {
+        totalPages,
+        skip,
+        page,
+        limit,
+        interventions: interventions.map((val) => ({
+          ...val,
+          options: JSON.parse(val.options),
+        })),
+      },
     });
   } catch (err) {
     console.log({ err });
