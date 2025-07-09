@@ -432,6 +432,7 @@ export const createIntervention = async (req, res) => {
           notes,
           options: content,
           recommendationId: id,
+          user_id: user.id,
         },
       });
       await trx.recommendation.update({
