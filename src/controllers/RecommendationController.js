@@ -413,3 +413,64 @@ export const getResponseInstitution = async (req, res) => {
     return errorResponse(res, error, "Failed to get response");
   }
 };
+
+export const createIntervention = async (req, res) => {
+  try {
+    const user = req.user;
+    if (user.role !== "healthcare") {
+      throw new Error("User not have access to this resource");
+    }
+    const { id } = req.params;
+    if (!id) {
+      throw new Error("RecommendationId is required in params");
+    }
+    const { content, forType, notes } = req.body;
+    await prisma.$transaction(async (trx) => {
+      const intervention = await trx.intervention.create({
+        data: {
+          forType,
+          notes,
+          options: content,
+          recommendationId: id,
+        },
+      });
+      await trx.recommendation.update({
+        where: {
+          id,
+        },
+        data: {
+          status: "COMPLETED",
+        },
+      });
+
+      return intervention;
+    });
+
+    return intervention;
+  } catch (err) {
+    console.log(err.message);
+    return errorResponse(res, err, "Failed to get response");
+  }
+};
+
+export const getSingleRecommendation = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const recommendation = await prisma.recommendation.findUnique({
+      where: {
+        id,
+      },
+      include: {
+        submittedBy: true,
+        Intervention: true,
+        student: {
+          include: { class: true, familyMember: { include: { family: true } } },
+        },
+      },
+    });
+
+    return recommendation;
+  } catch (err) {
+    return errorResponse(res, err, "Failed to get response");
+  }
+};

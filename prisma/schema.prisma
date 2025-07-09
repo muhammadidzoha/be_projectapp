@@ -31,6 +31,7 @@ model User {
   family         Family?          @relation("UserFamily")
   nutrition      Nutrition[]      @relation("UserNutrition")
   recommendation Recommendation[] @relation("UserSubmittedRecommendations")
+  interventions Intervention[]
 
   @@map("users")
 }
@@ -438,11 +439,15 @@ enum InterventionFor {
 
 model Intervention {
   id               String          @id @default(uuid())
-  recommendationId String
+  recommendationId String @unique
   forType          InterventionFor
   options          Json
   notes            String?
   createdAt        DateTime        @default(now())
+  user_id String @default(uuid())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
 
   recommendation Recommendation @relation("RecommendationIntervention", fields: [recommendationId], references: [id], onDelete: Cascade)
 
