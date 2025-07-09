@@ -32,6 +32,8 @@ model User {
   nutrition      Nutrition[]      @relation("UserNutrition")
   recommendation Recommendation[] @relation("UserSubmittedRecommendations")
   interventions Intervention[]
+  staff Staff?
+
 
   @@map("users")
 }
@@ -68,6 +70,7 @@ model Institution {
   familyMember     FamilyMember[]  @relation("FamilyMemberInstitution")
   student          Student[]       @relation("StudentInstitution")
   Response         Response[]      @relation("InstitutionResponse")
+  staffs Staff[]
 
   @@map("institutions")
 }
@@ -452,4 +455,23 @@ model Intervention {
   recommendation Recommendation @relation("RecommendationIntervention", fields: [recommendationId], references: [id], onDelete: Cascade)
 
   @@map("interventions")
+}
+
+
+model Staff {
+  id         String   @id @default(uuid())
+  fullName   String   @db.VarChar(255)
+  role       String?  @db.VarChar(255)
+  address    String   @db.VarChar(255)
+  phone      String   @db.VarChar(255)
+  user_id    String?  @unique @db.VarChar(255)
+  healthcare_id  Int      @db.Int
+  created_at DateTime @default(now()) @db.Timestamp(2)
+  updated_at DateTime @default(now()) @db.Timestamp(2)
+
+  user User? @relation(fields: [user_id], references: [id])
+
+  institution Institution @relation( fields: [healthcare_id], references: [id], onDelete: Cascade)
+
+  @@map("staffs")
 }
