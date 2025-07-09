@@ -425,7 +425,7 @@ export const createIntervention = async (req, res) => {
       throw new Error("RecommendationId is required in params");
     }
     const { content, forType, notes } = req.body;
-    await prisma.$transaction(async (trx) => {
+    const intervention = await prisma.$transaction(async (trx) => {
       const intervention = await trx.intervention.create({
         data: {
           forType,
@@ -447,7 +447,11 @@ export const createIntervention = async (req, res) => {
       return intervention;
     });
 
-    return intervention;
+    res.status(201).json({
+      status: "Success",
+      message: "Intervention created",
+      data: intervention,
+    });
   } catch (err) {
     console.log(err.message);
     return errorResponse(res, err, "Failed to get response");
@@ -462,15 +466,139 @@ export const getSingleRecommendation = async (req, res) => {
         id,
       },
       include: {
-        submittedBy: true,
+        submittedBy: {
+          select: {
+            institution: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
         Intervention: true,
         student: {
-          include: { class: true, familyMember: { include: { family: true } } },
+          include: {
+            class: true,
+            familyMember: {
+              include: {
+                family: {
+                  include: {
+                    user: {
+                      include: { family: { include: { familyMember: true } } },
+                    },
+                  },
+                },
+                residence: true,
+              },
+            },
+          },
         },
       },
     });
 
-    return recommendation;
+    res.status(200).json({
+      status: "Success",
+      message: "Recommendation fetched",
+      data: recommendation,
+    });
+  } catch (err) {
+    console.log({ err });
+    return errorResponse(res, err, "Failed to get response");
+  }
+};
+
+export const getInterventionsBelongToInstitution = async (req, res) => {
+  try {
+    const user = req.user;
+    console.log({ user });
+    const userInstitution = await prisma.user.findUnique({
+      where: {
+        id: user.id,
+      },
+      select: {
+        institution: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
+    if (!userInstitution) {
+      throw new Error("user not found");
+    }
+    console.log({ userInstitution });
+    const interventions = await prisma.intervention.findMany({
+      where: {
+        user: {
+          institution: {
+            id: userInstitution.institution.id,
+          },
+        },
+      },
+    });
+
+    res.status(200).json({
+      status: "Success",
+      message: "Interventions Belongs to Institution fetched",
+      data: interventions,
+    });
+  } catch (err) {
+    console.log({ err });
+    return errorResponse(res, err, "Failed to get response");
+  }
+};
+
+export const getInterventionsBelongToFamily = async (req, res) => {
+  try {
+    const user = req.user;
+    if (!user) {
+      throw new Error("user not found");
+    }
+    const interventions = await prisma.intervention.findMany({
+      where: {
+        recommendation: {
+          student: {
+            familyMember: {
+              family: {
+                userId: user.id,
+              },
+            },
+          },
+        },
+        forType: "PARENT",
+      },
+    });
+
+    res.status(200).json({
+      status: "Success",
+      message: "Intervention belongs to family fetched",
+      data: interventions,
+    });
+  } catch (err) {
+    console.log({ err });
+    return errorResponse(res, err, "Failed to get response");
+  }
+};
+
+export const getInterventionById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      throw new Error("Id is required");
+    }
+    const intervention = await prisma.intervention.findUnique({
+      where: {
+        id,
+      },
+    });
+    if (!intervention) {
+      throw new Error(`Intervention with id ${id} is not found`);
+    }
+    res.status(200).json({
+      status: "Success",
+      message: "Intervention retrieved",
+      data: intervention,
+    });
   } catch (err) {
     return errorResponse(res, err, "Failed to get response");
   }
