@@ -61,3 +61,9 @@ statisticRouter.get(
   verifyToken,
   schoolStatisticController.getUnfilledQuisionerFamilyCount
 );
+
+statisticRouter.get(
+  "/statistics/schools/students",
+  verifyToken,
+  schoolStatisticController.getTotalStudent
+);

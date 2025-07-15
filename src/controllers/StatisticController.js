@@ -325,4 +325,24 @@ export const schoolStatisticController = {
       return errorResponse(res, err, "Gagal mendapatkan data");
     }
   },
+
+  getTotalStudent: async (req, res) => {
+    try {
+      const user = req.user;
+      const userInstitutionId = await getUserInstitution(user.id);
+      const studentCount = await prisma.student.count({
+        where: {
+          schoolId: userInstitutionId,
+        },
+      });
+
+      res.status(200).json({
+        status: "Success",
+        message: "Data berhasil didapatkan",
+        data: studentCount,
+      });
+    } catch (err) {
+      return errorResponse(res, err, "Gagal mendapatkan data");
+    }
+  },
 };
