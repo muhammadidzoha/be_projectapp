@@ -31,12 +31,11 @@ export const parentStatisticController = {
     try {
       const today = new Date();
       const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(today.getDate() - 14);
       const user = req.user;
       const data = await prisma.nutrition.findMany({
         orderBy: [
           {
-            createdBy: "asc",
+            createdBy: "desc",
           },
           {
             familyMember: {
@@ -52,9 +51,6 @@ export const parentStatisticController = {
               },
             },
             relation: "ANAK",
-            createdAt: {
-              gte: thirtyDaysAgo,
-            },
           },
         },
         include: {
@@ -64,6 +60,7 @@ export const parentStatisticController = {
             },
           },
         },
+        take: 10,
       });
 
       const groupedData = data.reduce((acc, current) => {
@@ -155,6 +152,177 @@ export const parentStatisticController = {
       });
     } catch (err) {
       return errorResponse(res, err, "Terjadi kesalahan saat mengambil data");
+    }
+  },
+};
+
+const getUserInstitution = async (userId) => {
+  const user = await prisma.user.findUnique({
+    where: {
+      id: userId,
+    },
+    select: {
+      institution: {
+        select: {
+          name: true,
+          id: true,
+        },
+      },
+    },
+  });
+
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  return user.institution?.id;
+};
+
+export const schoolStatisticController = {
+  getEachInterventionStatusCount: async (req, res) => {
+    try {
+      const user = req.user;
+      const thirtyDayAgo = new Date();
+      thirtyDayAgo.setDate(new Date().getDate() - 30);
+      const institutionId = await getUserInstitution(user.id);
+      const statusCount = await prisma.recommendation.groupBy({
+        by: ["status"],
+        _count: { status: true },
+        where: {
+          submittedBy: {
+            institution: {
+              id: institutionId,
+            },
+          },
+          createdAt: {
+            gt: thirtyDayAgo,
+          },
+        },
+      });
+
+      res.status(200).json({
+        status: "Success",
+        message: "Data didapatkan",
+        data: statusCount.map((val) => ({
+          status: val.status,
+          total: val._count.status,
+        })),
+      });
+    } catch (err) {
+      return errorResponse(res, err, "Gagal mendapatkan status intervensi");
+    }
+  },
+
+  getTotalRecommendationAndIntervention: async (req, res) => {
+    try {
+      const user = req.user;
+
+      const userInstitutionId = await getUserInstitution(user.id);
+
+      const recommendationTotal = await prisma.recommendation.count({
+        where: {
+          submittedBy: {
+            institution: {
+              id: userInstitutionId,
+            },
+          },
+        },
+      });
+
+      const interventionTotal = await prisma.$queryRaw`
+        SELECT DISTINCT r.id FROM interventions i JOIN recommendations r ON i.recommendationId = r.id JOIN users u ON r.submittedById = u.id JOIN institutions it ON u.id = it.user_id WHERE it.id = ${userInstitutionId}
+      `;
+
+      res.status(200).json({
+        status: "Success",
+        message: "Berhasil mendapatkan data",
+        data: {
+          recommendationTotal,
+          interventionTotal: interventionTotal.length ?? 0,
+        },
+      });
+    } catch (err) {
+      return errorResponse(res, err, "Gagal saat mendapatkan data");
+    }
+  },
+
+  getDemografiDistribution: async (req, res) => {
+    try {
+      const educationDistribution = await prisma.$queryRaw`
+        SELECT education, COUNT(education) as total FROM family_members fm GROUP BY education  
+      `;
+
+      const jobDistribution = await prisma.$queryRaw`
+        SELECT jt.name, COUNT(j.jobTypeId) as total FROM jobs j JOIN job_types jt ON j.jobTypeId = jt.id GROUP BY jt.name
+      `;
+
+      console.log({ educationDistribution, jobDistribution });
+
+      res.status(200).json({
+        status: "Success",
+        message: "Berhasil mendapatkan data",
+        data: {
+          educationDistribution: educationDistribution.map((val) => ({
+            ...val,
+            total: +val.total.toString(),
+          })),
+          jobDistribution: jobDistribution.map((val) => ({
+            ...val,
+            total: +val.total.toString(),
+          })),
+        },
+      });
+    } catch (err) {
+      return errorResponse(res, err, "Gagal mendapatkan data");
+    }
+  },
+
+  getTotalStudentWithNutritionProblem: async (req, res) => {
+    try {
+      const user = req.user;
+      const userInstitutionId = await getUserInstitution(user.id);
+      const data = await prisma.$queryRaw`
+        SELECT c.name, COUNT(s.id) as total_student, COUNT(n.id) as student_with_problem_total 
+        FROM students s JOIN classes c ON s.classId = c.id
+        JOIN family_members fm ON fm.id = s.familyMemberId
+        LEFT JOIN nutritions n ON fm.id = n.familyMemberId
+        JOIN nutrition_status ns ON  ns.id = n.nutritionStatusId 
+        WHERE schoolId = ${userInstitutionId} AND n.nutritionStatusId != 3  GROUP BY s.classId
+      `;
+      console.log({ data });
+      res.json({
+        status: "Success",
+        message: "Berhasil mendapatkan data",
+        data: data.map((val) => ({
+          ...val,
+          total_student: +val.total_student.toString(),
+          student_with_problem_total:
+            +val.student_with_problem_total.toString(),
+        })),
+      });
+    } catch (err) {
+      return errorResponse(res, err, "Gagal mendapatkan data");
+    }
+  },
+
+  getUnfilledQuisionerFamilyCount: async (req, res) => {
+    try {
+      const user = req.user;
+      const userInstitutionId = getUserInstitution(user.id);
+      const unfilledQuisionerFamilyCount = await prisma.$queryRaw`
+        SELECT COUNT(*) as unfilled_family_quisioner FROM families f JOIN users u ON f.userId = u.id JOIN family_members fm ON fm.id = (SELECT id FROM family_members fm2 WHERE fm2.familyId = f.id ORDER BY fm2.createdAt ASC limit
+      1) LEFT JOIN responses r ON r.familyMemberId = fm.id WHERE r.familyMemberId IS NULL;
+      `;
+      console.log({ unfilledQuisionerFamilyCount });
+      res.status(200).json({
+        status: "Success",
+        message: " Berhasil mendapatkan data",
+        data:
+          +unfilledQuisionerFamilyCount[0]?.unfilled_family_quisioner?.toString() ??
+          0,
+      });
+    } catch (err) {
+      return errorResponse(res, err, "Gagal mendapatkan data");
     }
   },
 };

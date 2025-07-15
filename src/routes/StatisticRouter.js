@@ -1,6 +1,9 @@
 import { Router } from "express";
 import { verifyToken } from "../middelware/verifyToken.js";
-import { parentStatisticController } from "../controllers/StatisticController.js";
+import {
+  parentStatisticController,
+  schoolStatisticController,
+} from "../controllers/StatisticController.js";
 
 export const statisticRouter = Router();
 
@@ -26,4 +29,35 @@ statisticRouter.get(
   "/statistics/parents/quisioners/status",
   verifyToken,
   parentStatisticController.getQuisionerStatus
+);
+
+// School
+statisticRouter.get(
+  "/statistics/schools/interventions/status",
+  verifyToken,
+  schoolStatisticController.getEachInterventionStatusCount
+);
+
+statisticRouter.get(
+  "/statistics/schools/interventions/handled",
+  verifyToken,
+  schoolStatisticController.getTotalRecommendationAndIntervention
+);
+
+statisticRouter.get(
+  "/statistics/schools/demografi",
+  verifyToken,
+  schoolStatisticController.getDemografiDistribution
+);
+
+statisticRouter.get(
+  "/statistics/schools/nutritions/classes",
+  verifyToken,
+  schoolStatisticController.getTotalStudentWithNutritionProblem
+);
+
+statisticRouter.get(
+  "/statistics/schools/quisioners/unfilled",
+  verifyToken,
+  schoolStatisticController.getUnfilledQuisionerFamilyCount
 );
