@@ -345,4 +345,52 @@ export const schoolStatisticController = {
       return errorResponse(res, err, "Gagal mendapatkan data");
     }
   },
+
+  getTotalTeacher: async (req, res) => {
+    try {
+      const user = req.user;
+      const userInstitutionId = await getUserInstitution(user.id);
+      const teacherCount = await prisma.teacher.count({
+        where: {
+          school_id: userInstitutionId,
+        },
+      });
+
+      res.status(200).json({
+        status: "Success",
+        message: "Data total guru didapatkan",
+        data: teacherCount,
+      });
+    } catch (err) {
+      return errorResponse(res, err, "Gagal mendapatkan data");
+    }
+  },
+};
+
+export const puskesmasStatisticController = {
+  // getRecommendationStatus: async (req, res) => {
+  //   try{
+  //     const interventionStatusCount = await prisma.$queryRaw`
+  //     `
+  //   }catch(err) {
+  //     return errorResponse(res, err, "Gagal mendapatkan data");
+  //   }
+  // }
+
+  getInterventions: async (req, res) => {
+    try {
+      const user = req.user;
+      const userInstitutionId = getUserInstitution(user.id);
+      const interventions = await prisma.$queryRaw`
+        SELECT CASE
+          WHEN DAY(i.createdAt) > 0 THEN 1
+          WHEN DAY(i.createdAt) > 7 THEN 2
+          WHEN DAY(i.createdAt) > 14 THEN 3
+          ELSE 4
+          END AS week, COUNT(i.id) as total_intervention FROM interventions i JOIN users u ON i.user_id = u.id JOIN institutions ins ON ins.user_Id = u.id WHERE ins.id = ${userInstitutionId}  GROUP BY week ORDER BY week ASC
+      `;
+    } catch (err) {
+      return errorResponse(res, err);
+    }
+  },
 };

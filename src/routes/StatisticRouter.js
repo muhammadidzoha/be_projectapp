@@ -67,3 +67,9 @@ statisticRouter.get(
   verifyToken,
   schoolStatisticController.getTotalStudent
 );
+
+statisticRouter.get(
+  "/statistics/schools/teachers",
+  verifyToken,
+  schoolStatisticController.getTotalTeacher
+);
