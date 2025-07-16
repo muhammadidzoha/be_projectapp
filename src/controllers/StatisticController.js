@@ -404,7 +404,47 @@ export const puskesmasStatisticController = {
   getNutritionDistributionBySchool: async (req, res) => {
     try {
       const nutritionDistribution = await prisma.$queryRaw`
-       SELECT ins.id, ins.name, ns.status as status_gizi, COUNT(ns.id) AS total FROM nutritions n JOIN nutrition_status ns ON n.nutritionStatusId = ns.id JOIN family_members fm ON fm.id = n.familyMemberId JOIN students s ON s.familyMemberId = fm.id JOIN institutions ins ON ins.id = s.schoolId GROUP BY ins.id, ns.id
+       SELECT ins.id, ins.name, ns.status as status_gizi, COUNT(ns.id) AS total FROM nutritions n JOIN (SELECT familyMemberId, MAX(createdAt) AS createdAt FROM nutritions GROUP BY familyMemberId) as latest_n ON latest_n.familyMemberId = n.familyMemberId AND latest_n.createdAt = n.createdAt JOIN nutrition_status ns ON n.nutritionStatusId = ns.id JOIN family_members fm ON fm.id = n.familyMemberId JOIN students s ON s.familyMemberId = fm.id JOIN institutions ins ON ins.id = s.schoolId GROUP BY ins.id, ns.id
+      `;
+
+      const groupedData = nutritionDistribution.reduce((acc, current, i) => {
+        let key = current["id"];
+
+        if (acc.length === 0) {
+          acc.push({
+            [key]: [],
+          });
+        }
+
+        for (let x = 0; x < acc.length; x++) {
+          if (!acc[x][key]) {
+            acc.push({
+              [key]: [],
+            });
+          }
+
+          acc[x][key].push({
+            ...current,
+            total: +current.total.toString(),
+          });
+        }
+
+        return acc;
+      }, []);
+      res.status(200).json({
+        status: "Success",
+        message: "Berhasil mendapatkan data",
+        data: groupedData,
+      });
+    } catch (err) {
+      return errorResponse(res, err);
+    }
+  },
+
+  getNutritionDistributionBySchoolAndAge: async (req, res) => {
+    try {
+      const nutritionDistribution = await prisma.$queryRaw`
+       SELECT ins.id, ins.name, ns.status as status_gizi, TIMESTAMPDIFF(YEAR, fm.birthDate, NOW()) AS age ,COUNT(ns.id) AS total FROM nutritions n JOIN (SELECT familyMemberId, MAX(createdAt) AS createdAt FROM nutritions GROUP BY familyMemberId) as latest_n ON latest_n.familyMemberId = n.familyMemberId AND latest_n.createdAt = n.createdAt JOIN nutrition_status ns ON n.nutritionStatusId = ns.id JOIN family_members fm ON fm.id = n.familyMemberId JOIN students s ON s.familyMemberId = fm.id JOIN institutions ins ON ins.id = s.schoolId GROUP BY ins.id, ns.id, TIMESTAMPDIFF(YEAR, fm.birthDate, NOW())
       `;
 
       const groupedData = nutritionDistribution.reduce((acc, current, i) => {
