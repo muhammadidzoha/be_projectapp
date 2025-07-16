@@ -87,3 +87,9 @@ statisticRouter.get(
   verifyToken,
   puskesmasStatisticController.getNutritionDistributionBySchool
 );
+
+statisticRouter.get(
+  "/statistics/healthcare/responses/averages",
+  verifyToken,
+  puskesmasStatisticController.getAvgResponseScoreByCategory
+);

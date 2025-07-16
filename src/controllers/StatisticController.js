@@ -480,4 +480,20 @@ export const puskesmasStatisticController = {
       return errorResponse(res, err);
     }
   },
+
+  getAvgResponseScoreByCategory: async (req, res) => {
+    try {
+      const avgScore = await prisma.$queryRaw`
+        SELECT q.id, q.title, AVG(r.totalScore) AS avg_score FROM responses r JOIN quesioners q ON q.id = r.quisionerId JOIN family_members fm ON fm.id = r.familyMemberId WHERE fm.institutionId IS NULL  GROUP BY q.id;
+      `;
+
+      res.status(200).json({
+        status: "Success",
+        message: "Berhasil mendapatkan data",
+        data: avgScore,
+      });
+    } catch (err) {
+      return errorResponse(res, err);
+    }
+  },
 };
