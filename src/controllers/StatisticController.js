@@ -1,3 +1,4 @@
+import { serializeJsonQuery } from "@prisma/client/runtime/library";
 import { errorResponse } from "../helpers/ResponseHelper.js";
 import { PrismaClient } from "@prisma/client";
 
@@ -377,7 +378,7 @@ export const puskesmasStatisticController = {
   //   }
   // }
 
-  getInterventions: async (req, res) => {
+  getTotalInterventions: async (req, res) => {
     try {
       const user = req.user;
       const userInstitutionId = getUserInstitution(user.id);
@@ -389,6 +390,52 @@ export const puskesmasStatisticController = {
           ELSE 4
           END AS week, COUNT(i.id) as total_intervention FROM interventions i JOIN users u ON i.user_id = u.id JOIN institutions ins ON ins.user_Id = u.id WHERE ins.id = ${userInstitutionId}  GROUP BY week ORDER BY week ASC
       `;
+
+      res.status(200).json({
+        status: "Success",
+        message: "Berhasil mendapatkan data",
+        data: interventions,
+      });
+    } catch (err) {
+      return errorResponse(res, err);
+    }
+  },
+
+  getNutritionDistributionBySchool: async (req, res) => {
+    try {
+      const nutritionDistribution = await prisma.$queryRaw`
+       SELECT ins.id, ins.name, ns.status as status_gizi, COUNT(ns.id) AS total FROM nutritions n JOIN nutrition_status ns ON n.nutritionStatusId = ns.id JOIN family_members fm ON fm.id = n.familyMemberId JOIN students s ON s.familyMemberId = fm.id JOIN institutions ins ON ins.id = s.schoolId GROUP BY ins.id, ns.id
+      `;
+
+      const groupedData = nutritionDistribution.reduce((acc, current, i) => {
+        let key = current["id"];
+
+        if (acc.length === 0) {
+          acc.push({
+            [key]: [],
+          });
+        }
+
+        for (let x = 0; x < acc.length; x++) {
+          if (!acc[x][key]) {
+            acc.push({
+              [key]: [],
+            });
+          }
+
+          acc[x][key].push({
+            ...current,
+            total: +current.total.toString(),
+          });
+        }
+
+        return acc;
+      }, []);
+      res.status(200).json({
+        status: "Success",
+        message: "Berhasil mendapatkan data",
+        data: groupedData,
+      });
     } catch (err) {
       return errorResponse(res, err);
     }

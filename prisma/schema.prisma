@@ -331,7 +331,7 @@ model Nutrition {
   weight            Float    @db.Float
   bmi               Float?   @db.Float
   birthWeight       Float?   @db.Float
-  familyMemberId    String   @unique @db.VarChar(255)
+  familyMemberId    String   @db.VarChar(255)
   createdAt         DateTime @default(now()) @db.Timestamp(2)
   updatedAt         DateTime @default(now()) @db.Timestamp(2)
   createdBy         String   @db.VarChar(255)

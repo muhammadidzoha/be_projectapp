@@ -2,6 +2,7 @@ import { Router } from "express";
 import { verifyToken } from "../middelware/verifyToken.js";
 import {
   parentStatisticController,
+  puskesmasStatisticController,
   schoolStatisticController,
 } from "../controllers/StatisticController.js";
 
@@ -72,4 +73,17 @@ statisticRouter.get(
   "/statistics/schools/teachers",
   verifyToken,
   schoolStatisticController.getTotalTeacher
+);
+
+// Puskesmas
+statisticRouter.get(
+  "/statistics/healthcare/interventions",
+  verifyToken,
+  puskesmasStatisticController.getTotalInterventions
+);
+
+statisticRouter.get(
+  "/statistics/healthcare/nutritions/distribution",
+  verifyToken,
+  puskesmasStatisticController.getNutritionDistributionBySchool
 );
