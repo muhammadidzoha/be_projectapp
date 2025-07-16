@@ -257,8 +257,6 @@ export const schoolStatisticController = {
         SELECT jt.name, COUNT(j.jobTypeId) as total FROM jobs j JOIN job_types jt ON j.jobTypeId = jt.id GROUP BY jt.name
       `;
 
-      console.log({ educationDistribution, jobDistribution });
-
       res.status(200).json({
         status: "Success",
         message: "Berhasil mendapatkan data",
@@ -407,30 +405,7 @@ export const puskesmasStatisticController = {
        SELECT ins.id, ins.name, ns.status as status_gizi, COUNT(ns.id) AS total FROM nutritions n JOIN (SELECT familyMemberId, MAX(createdAt) AS createdAt FROM nutritions GROUP BY familyMemberId) as latest_n ON latest_n.familyMemberId = n.familyMemberId AND latest_n.createdAt = n.createdAt JOIN nutrition_status ns ON n.nutritionStatusId = ns.id JOIN family_members fm ON fm.id = n.familyMemberId JOIN students s ON s.familyMemberId = fm.id JOIN institutions ins ON ins.id = s.schoolId GROUP BY ins.id, ns.id
       `;
 
-      const groupedData = nutritionDistribution.reduce((acc, current, i) => {
-        let key = current["id"];
-
-        if (acc.length === 0) {
-          acc.push({
-            [key]: [],
-          });
-        }
-
-        for (let x = 0; x < acc.length; x++) {
-          if (!acc[x][key]) {
-            acc.push({
-              [key]: [],
-            });
-          }
-
-          acc[x][key].push({
-            ...current,
-            total: +current.total.toString(),
-          });
-        }
-
-        return acc;
-      }, []);
+      const groupedData = groupDataByKey(nutritionDistribution, "id");
       res.status(200).json({
         status: "Success",
         message: "Berhasil mendapatkan data",
@@ -447,30 +422,7 @@ export const puskesmasStatisticController = {
        SELECT ins.id, ins.name, ns.status as status_gizi, TIMESTAMPDIFF(YEAR, fm.birthDate, NOW()) AS age ,COUNT(ns.id) AS total FROM nutritions n JOIN (SELECT familyMemberId, MAX(createdAt) AS createdAt FROM nutritions GROUP BY familyMemberId) as latest_n ON latest_n.familyMemberId = n.familyMemberId AND latest_n.createdAt = n.createdAt JOIN nutrition_status ns ON n.nutritionStatusId = ns.id JOIN family_members fm ON fm.id = n.familyMemberId JOIN students s ON s.familyMemberId = fm.id JOIN institutions ins ON ins.id = s.schoolId GROUP BY ins.id, ns.id, TIMESTAMPDIFF(YEAR, fm.birthDate, NOW())
       `;
 
-      const groupedData = nutritionDistribution.reduce((acc, current, i) => {
-        let key = current["id"];
-
-        if (acc.length === 0) {
-          acc.push({
-            [key]: [],
-          });
-        }
-
-        for (let x = 0; x < acc.length; x++) {
-          if (!acc[x][key]) {
-            acc.push({
-              [key]: [],
-            });
-          }
-
-          acc[x][key].push({
-            ...current,
-            total: +current.total.toString(),
-          });
-        }
-
-        return acc;
-      }, []);
+      const groupedData = groupDataByKey(nutritionDistribution, "id");
       res.status(200).json({
         status: "Success",
         message: "Berhasil mendapatkan data",
@@ -496,4 +448,300 @@ export const puskesmasStatisticController = {
       return errorResponse(res, err);
     }
   },
+};
+
+export const adminStatisticController = {
+  getNutritionStatusByRegion: async (req, res) => {
+    try {
+      const data = await prisma.$queryRaw`
+    SELECT c.name, ns.status, COUNT(n.id) AS total FROM nutritions n JOIN ( SELECT familyMemberId, MAX(createdAt) AS createdAt FROM nutritions GROUP BY familyMemberId ) AS latest_n ON latest_n.familyMemberId = n.familyMemberId AND latest_n.createdAt = n.createdAt  JOIN nutrition_status ns ON n.nutritionStatusId = ns.id JOIN students s ON n.familyMemberId
+ = s.familyMemberId JOIN institutions ins ON s.schoolId = ins.id JOIN cities c ON c.id = ins.city_id GROUP BY c.id, ns.status
+    `;
+
+      res.status(200).json({
+        status: "Success",
+        message: "Berhasil mendapatkan status nutrisi berdasarkan region",
+        data: data.map((val) => ({
+          ...val,
+          total: +val.total.toString(),
+        })),
+      });
+    } catch (err) {
+      return errorResponse(res, err);
+    }
+  },
+
+  getNutritionStatusBySchool: async (req, res) => {
+    try {
+      const data = await prisma.$queryRaw`
+    SELECT ins.id, ins.name, ns.status, COUNT(n.id) AS total FROM nutritions n JOIN ( SELECT familyMemberId, MAX(createdAt) AS createdAt FROM nutritions GROUP BY familyMemberId ) AS latest_n ON latest_n.familyMemberId = n.familyMemberId AND latest_n.createdAt = n.createdAt  JOIN nutrition_status ns ON n.nutritionStatusId = ns.id JOIN students s ON n.familyMemberId
+ = s.familyMemberId JOIN institutions ins ON s.schoolId = ins.id GROUP BY ins.id, ns.status
+    `;
+
+      const groupedData = groupDataByKey(data, "name");
+
+      res.status(200).json({
+        status: "Success",
+        message: "Berhasil mendapatkan status nutrisi berdasarkan region",
+        data: groupedData,
+      });
+    } catch (err) {
+      return errorResponse(res, err);
+    }
+  },
+
+  //   getNutritionStatusBySchoolAndClass: async (req, res) => {
+  //     try {
+  //       const data = await prisma.$queryRaw`
+  //     SELECT ins.id as school_id, ins.name, cl.id as class_id, cl.name,  COUNT(n.id) AS total FROM nutritions n JOIN (SELECT familyMemberId, MAX(createdAt) AS createdAt FROM nutritions GROUP BY familyMemberId) AS latest_n ON latest_n.familyMemberId = n.familyMemberId AND latest_n.createdAt = n.createdAt JOIN nutrition_status ns ON n.nutritionStatusId = ns.id JOIN students s ON n.familyMemberId
+  //  = s.familyMemberId JOIN institutions ins ON s.schoolId = ins.id JOIN classes cl ON cl.id = s.classId GROUP BY ins.id, cl.id, ns.status;
+  //     `;
+
+  //       const groupedData = data.reduce((acc, current, i) => {
+  //         if (!acc[i]) {
+  //           acc[i];
+  //         }
+  //       }, []);
+
+  //       res.status(200).json({
+  //         status: "Success",
+  //         message: "Berhasil mendapatkan status nutrisi berdasarkan region",
+  //         data: groupedData,
+  //       });
+  //     } catch (err) {
+  //       return errorResponse(res, err);
+  //     }
+  //   },
+
+  getRecommendationStatusCount: async (req, res) => {
+    try {
+      const data = await prisma.$queryRaw`
+      SELECT  r.status, COUNT(*) as total FROM recommendations r GROUP BY r.status
+    `;
+
+      res.status(200).json({
+        status: "Success",
+        message: "Data berhasil didapatkan",
+        data: data.map((val) => ({
+          ...val,
+          total: +val.total.toString(),
+        })),
+      });
+    } catch (err) {
+      return errorResponse(res, err);
+    }
+  },
+
+  getTotalRecommendation: async (req, res) => {
+    try {
+      const totalRecommendationCount = await prisma.recommendation.count();
+
+      res.status(200).json({
+        status: "Success",
+        message: "Data berhasil didapatkan",
+        data: totalRecommendationCount,
+      });
+    } catch (err) {
+      return errorResponse(res, err);
+    }
+  },
+
+  getTotalIntervention: async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+      const totalInterventionCount = await prisma.intervention.findMany({
+        distinct: ["recommendationId"],
+        where: {
+          createdAt: {
+            gte: startDate ?? null,
+            lte: endDate ?? new Date(),
+          },
+        },
+      });
+
+      res.status(200).json({
+        status: "Success",
+        message: "Data berhasil didapatkan",
+        data: totalInterventionCount,
+      });
+    } catch (err) {
+      return errorResponse(res, err);
+    }
+  },
+
+  getInterventionByEachHealthcare: async (req, res) => {
+    try {
+      const totalInterventionByInstitution = await prisma.$queryRaw`
+        SELECT ins.id AS institution_id, ins.name, COUNT(i.id) as total_intervention FROM interventions i JOIN users u ON i.user_id = u.id JOIN institutions ins ON ins.user_id = u.id GROUP BY ins.id
+      `;
+
+      res.status(200).json({
+        status: "Success",
+        message: "Data berhasil didapatkan",
+        data: totalInterventionByInstitution.map((val) => ({
+          ...val,
+          total_intervention: +val.total_intervention.toString(),
+        })),
+      });
+    } catch (err) {
+      return errorResponse(res, err);
+    }
+  },
+
+  getTotalUserByRole: async (req, res) => {
+    try {
+      const userCountByRole = await prisma.$queryRaw`
+        SELECT r.name, COUNT(u.id) AS total_user FROM users u JOIN roles r ON r.id = u.role_id GROUP BY r.id
+      `;
+
+      res.status(200).json({
+        status: "Success",
+        message: "Data berhasil didapatkan",
+        data: userCountByRole.map((val) => ({
+          ...val,
+          total_user: +val.total_user.toString(),
+        })),
+      });
+    } catch (err) {
+      return errorResponse(res, err);
+    }
+  },
+
+  getTotalInstitution: async (req, res) => {
+    try {
+      const institutionCount = await prisma.$queryRaw`
+        SELECT ins.id AS institution_id, ins.name AS school_name, COUNT(u.id) AS total_user FROM users u JOIN institutions ins ON ins.user_id = u.id GROUP BY ins.id
+      `;
+
+      res.status(200).json({
+        status: "Success",
+        message: "Data berhasil didapatkan",
+        data: institutionCount.map((val) => ({
+          ...val,
+          total_user: +val.total_user.toString(),
+        })),
+      });
+    } catch (err) {
+      return errorResponse(res, err);
+    }
+  },
+
+  getTotalInterventionEachRegion: async (req, res) => {
+    try {
+      const totalInterventionEachRegion = await prisma.$queryRaw`
+        SELECT c.name, COUNT(i.id) AS total_intervention FROM interventions i JOIN users u ON u.id = i.user_id JOIN institutions ins ON ins.user_id = u.id JOIN cities c ON ins.city_id = c.id GROUP BY c.id
+      `;
+
+      res.status(200).json({
+        status: "Success",
+        message: "Berhasil mendapatkan data",
+        data: totalInterventionEachRegion.map((val) => ({
+          ...val,
+          total_intervention: +val.total_intervention.toString(),
+        })),
+      });
+    } catch (err) {
+      return errorResponse(res, err);
+    }
+  },
+
+  getNutritionStatusEachRegion: async (req, res) => {
+    try {
+      const nutritionStatusEachRegion = await prisma.$queryRaw`
+        SELECT c.name, COUNT(n.id) AS total FROM students s JOIN institutions ins ON s.schoolId = ins.id JOIN cities c ON c.id = ins.city_id JOIN family_members fm ON fm.id = s.familyMemberId JOIN nutritions n ON n.familyMemberId = fm.id JOIN ( SELECT familyMemberId, MAX(createdAt) AS createdAt FROM nutritions GROUP BY familyMemberId ) as latest_n ON latest_n.familyMemberId = fm.id AND latest_n.createdAt = n.createdAt  GROUP BY c.id
+      `;
+
+      res.status(200).json({
+        status: "Success",
+        message: "Berhasil mendapatkan data",
+        data: nutritionStatusEachRegion.map((val) => ({
+          ...val,
+          total: +val.total_intervention.toString(),
+        })),
+      });
+    } catch (err) {
+      return errorResponse(res, err);
+    }
+  },
+
+  getUnfilledQuisioner: async (req, res) => {
+    try {
+      const unfilledQuisionerFamilyCount = await prisma.$queryRaw`
+        SELECT COUNT(r.id) as total FROM families f JOIN (
+          
+          SELECT * FROM family_members  WHERE (familyId, createdAt) IN ( SELECT familyId, MIN(createdAt) as createdAt FROM family_members GROUP BY familyId )
+
+        ) as fm ON f.id = fm.familyId LEFT JOIN responses r ON r.familyMemberId = fm.id WHERE r.quisionerId IS NULL
+      `;
+
+      const unfilledQuisionerInstitution = await prisma.$queryRaw`
+          SELECT COUNT(DISTINCT ins.id) as total FROM responses r RIGHT JOIN institutions ins ON r.institutionId = ins.id WHERE r.id IS NULL GROUP BY r.quisionerId;
+        `;
+
+      const filledQuisionerFamilyCount = await prisma.$queryRaw`
+        SELECT COUNT(r.id) as total FROM families f JOIN (
+          
+          SELECT * FROM family_members  WHERE (familyId, createdAt) IN ( SELECT familyId, MIN(createdAt) as createdAt FROM family_members GROUP BY familyId )
+
+        ) as fm ON f.id = fm.familyId LEFT JOIN responses r ON r.familyMemberId = fm.id WHERE r.quisionerId IS NOT NULL
+      `;
+
+      const filledQuisionerInstitution = await prisma.$queryRaw`
+          SELECT COUNT(DISTINCT ins.id) as total FROM responses r RIGHT JOIN institutions ins ON r.institutionId = ins.id WHERE r.id IS NOT NULL GROUP BY r.quisionerId;
+        `;
+
+      res.status(200).json({
+        status: "Success",
+        message: "Data berhasil didapatkan",
+        data: {
+          unfilledFamily: unfilledQuisionerFamilyCount.map((val) => ({
+            ...val,
+            total: +val.total.toString(),
+          })),
+          unfilledInstitution: unfilledQuisionerInstitution.map((val) => ({
+            ...val,
+            total: +val.total.toString(),
+          })),
+          filledFamilly: filledQuisionerFamilyCount.map((val) => ({
+            ...val,
+            total: +val.total.toString(),
+          })),
+          filledInstitution: filledQuisionerInstitution.map((val) => ({
+            ...val,
+            total: +val.total.toString(),
+          })),
+        },
+      });
+    } catch (err) {
+      return errorResponse(res, err);
+    }
+  },
+};
+
+const groupDataByKey = (data = [], key) => {
+  const groupedData = data.reduce((acc, current) => {
+    const groupKey = current[key];
+    const existingGroup = acc.find((group) => group.key === groupKey);
+
+    if (existingGroup) {
+      existingGroup.items.push({
+        ...current,
+        total: +current.total.toString(),
+      });
+    } else {
+      acc.push({
+        key: groupKey,
+        items: [
+          {
+            ...current,
+            total: +current.total.toString(),
+          },
+        ],
+      });
+    }
+
+    return acc;
+  }, []);
+
+  return groupedData;
 };
