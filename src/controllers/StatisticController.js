@@ -1,6 +1,7 @@
 import { serializeJsonQuery } from "@prisma/client/runtime/library";
 import { errorResponse } from "../helpers/ResponseHelper.js";
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
+import { ParentService } from "../services/ParentService.js";
 
 const prisma = new PrismaClient({
   log: ["query", "error"],
@@ -153,6 +154,28 @@ export const parentStatisticController = {
       });
     } catch (err) {
       return errorResponse(res, err, "Terjadi kesalahan saat mengambil data");
+    }
+  },
+
+  getDashboardSummary: async (req, res) => {
+    try {
+      const user = req.user;
+      const [{ progress }, summary] = await Promise.all([
+        ParentService.getQuisionerProgress(user.id),
+        ParentService.getMemberSummaryCount(user.id),
+      ]);
+      console.log({ progress, summary });
+      res.status(200).json({
+        status: "Success",
+        message: "Summary statistic retrieved",
+        data: {
+          quisionerProgress: progress,
+          summary,
+        },
+      });
+    } catch (err) {
+      console.log({ err });
+      return errorResponse(res, err);
     }
   },
 };
@@ -647,8 +670,12 @@ export const adminStatisticController = {
 
   getNutritionStatusEachRegion: async (req, res) => {
     try {
+      let { status } = req.query;
+
       const nutritionStatusEachRegion = await prisma.$queryRaw`
-        SELECT c.name, COUNT(n.id) AS total FROM students s JOIN institutions ins ON s.schoolId = ins.id JOIN cities c ON c.id = ins.city_id JOIN family_members fm ON fm.id = s.familyMemberId JOIN nutritions n ON n.familyMemberId = fm.id JOIN ( SELECT familyMemberId, MAX(createdAt) AS createdAt FROM nutritions GROUP BY familyMemberId ) as latest_n ON latest_n.familyMemberId = fm.id AND latest_n.createdAt = n.createdAt  GROUP BY c.id
+        SELECT c.name, ns.status, COUNT(n.id) AS total FROM students s JOIN institutions ins ON s.schoolId = ins.id JOIN cities c ON c.id = ins.city_id JOIN family_members fm ON fm.id = s.familyMemberId JOIN nutritions n ON n.familyMemberId = fm.id JOIN ( SELECT familyMemberId, MAX(createdAt) AS createdAt FROM nutritions GROUP BY familyMemberId ) as latest_n ON latest_n.familyMemberId = fm.id AND latest_n.createdAt = n.createdAt  JOIN nutrition_status ns ON ns.id = n.nutritionStatusId 
+          ${status ? Prisma.sql`WHERE ns.status = ${status}` : Prisma.empty}
+  GROUP BY c.id, ns.id
       `;
 
       res.status(200).json({
@@ -656,7 +683,7 @@ export const adminStatisticController = {
         message: "Berhasil mendapatkan data",
         data: nutritionStatusEachRegion.map((val) => ({
           ...val,
-          total: +val.total_intervention.toString(),
+          total: +val.total.toString(),
         })),
       });
     } catch (err) {
@@ -711,6 +738,25 @@ export const adminStatisticController = {
             total: +val.total.toString(),
           })),
         },
+      });
+    } catch (err) {
+      return errorResponse(res, err);
+    }
+  },
+
+  getNutritionDistribution: async (req, res) => {
+    try {
+      const distributions = await prisma.$queryRaw`
+      SELECT ns.id, ns.status, COUNT(ns.id) as total FROM nutritions n JOIN nutrition_status ns ON n.nutritionStatusId = ns.id GROUP BY ns.id
+    `;
+
+      res.status(200).json({
+        status: "Success",
+        message: "Distribusi gizi berhasil didapatkan",
+        data: distributions.map((val) => ({
+          ...val,
+          total: +val?.total?.toString() ?? 0,
+        })),
       });
     } catch (err) {
       return errorResponse(res, err);

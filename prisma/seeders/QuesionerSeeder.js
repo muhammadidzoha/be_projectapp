@@ -25,18 +25,22 @@ export const seedQuesioners = async () => {
         {
           title: "Tingkat Pengetahuan Gizi Seimbang",
           description: "Quisioner tentang pengetahuan gizi seimbang orang tua",
+          for: "PARENT",
         },
         {
           title: "Kebiasaan Sehari-hari Anak",
           description: "Quisioner untuk mengetahui kebiasaaan sehari-hari anak",
+          for: "PARENT",
         },
         {
           title: "Pelayanan Kesehatan Sekolah",
           description: "Quisioner Pelayanan kesehatan di sekolah",
+          for: "SCHOOL",
         },
         {
           title: "Lingkungan Sekolah",
           description: "Quisioner Tentang Lingkungan Sekolah",
+          for: "SCHOOL",
         },
       ],
     });

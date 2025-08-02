@@ -152,19 +152,31 @@ export const createResponseQuesioner = async (req, res) => {
       return errorResponse(res, 404, "Family not found");
     }
 
-    const familyMember = await prisma.familyMember.findFirst({
+    console.log({ family });
+
+    const familyMembers = await prisma.familyMember.findMany({
       where: {
-        familyId: family.id,
-        OR: [
-          {
-            relation: "IBU",
-          },
-          {
-            relation: "AYAH",
-          },
-        ],
+        family: {
+          userId: user.id,
+        },
+        // OR: [
+        //   {
+        //     relation: "IBU",
+        //   },
+        //   {
+        //     relation: "AYAH",
+        //   },
+        // ],
       },
+      orderBy: {
+        createdAt: "asc",
+      },
+      take: 1,
     });
+    if (!familyMembers.length) {
+      return errorResponse(res, 404, "familyMember not found");
+    }
+    const familyMember = familyMembers[0];
 
     if (!familyMember) {
       return errorResponse(res, 404, "Family member not found");
@@ -241,6 +253,7 @@ export const createResponseQuesioner = async (req, res) => {
 
     return successResponse(res, response, "Berhasil menjawab kuisioner");
   } catch (error) {
+    console.log({ error });
     return errorResponse(
       res,
       error,
