@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { errorResponse, successResponse } from "../helpers/ResponseHelper.js";
+import { response } from "express";
 
 const prisma = new PrismaClient();
 
@@ -151,5 +152,31 @@ export const getInstitutionType = async (req, res) => {
     );
   } catch (error) {
     return errorResponse(res, error, "Internal server error");
+  }
+};
+
+export const getHealthCares = async (req, res) => {
+  try {
+    const healthcares = await prisma.institution.findMany({
+      where: {
+        type: 2,
+      },
+      include: {
+        province: {
+          select: {
+            name: true,
+          },
+        },
+        city: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
+
+    return successResponse(res, healthcares, "Helath care retrieved");
+  } catch (err) {
+    return errorResponse(res, err);
   }
 };

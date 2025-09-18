@@ -152,8 +152,6 @@ export const createResponseQuesioner = async (req, res) => {
       return errorResponse(res, 404, "Family not found");
     }
 
-    console.log({ family });
-
     const familyMembers = await prisma.familyMember.findMany({
       where: {
         family: {

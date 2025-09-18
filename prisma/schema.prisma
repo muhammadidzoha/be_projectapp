@@ -71,6 +71,7 @@ model Institution {
   student          Student[]       @relation("StudentInstitution")
   Response         Response[]      @relation("InstitutionResponse")
   staffs Staff[]
+  recommendation Recommendation[]
 
   @@map("institutions")
 }
@@ -428,11 +429,12 @@ model Recommendation {
   pdfUrl        String?
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @default(now())
+  healthcare_id Int
 
   student      Student        @relation("FamilyMemberRecommendation", fields: [studentId], references: [id], onDelete: Cascade)
   submittedBy  User           @relation("UserSubmittedRecommendations", fields: [submittedById], references: [id])
   Intervention Intervention[] @relation("RecommendationIntervention")
-
+  sendsTo Institution @relation(fields: [healthcare_id], references: [id])
   @@map("recommendations")
 }
 

@@ -9,9 +9,35 @@ export const getRecomendations = async (req, res) => {
   const offset = limit * page;
 
   try {
+    const user = req.user;
+    if (!user) {
+      throw new Error("User not authorized");
+    }
+
+    const userInstitution = await prisma.user.findUnique({
+      where: {
+        id: user.id,
+      },
+      include: {
+        institution: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
+    if (!userInstitution) {
+      throw new Error("User dont have institution");
+    }
+
     const totalRows = await prisma.recommendation.count();
 
     const recomend = await prisma.recommendation.findMany({
+      where: {
+        sendsTo: {
+          id: userInstitution.institution.id,
+        },
+      },
       select: {
         id: true,
         status: true,
@@ -135,7 +161,7 @@ export const createRecommendation = async (req, res) => {
       );
     }
 
-    const { familyMemberId, studentId } = req.body;
+    const { familyMemberId, studentId, healthCareId } = req.body;
     if (!familyMemberId) {
       return errorResponse(res, 400, "familyMemberId is required");
     }
@@ -154,23 +180,22 @@ export const createRecommendation = async (req, res) => {
     const existing = await prisma.recommendation.findFirst({
       where: {
         studentId: student.id,
-        status: { in: ["PENDING", "PROCESSED"] },
+      },
+      orderBy: {
+        createdAt: "desc",
       },
     });
 
-    if (existing) {
-      return errorResponse(
-        res,
-        400,
-        "Murid ini sudah direkomendasikan sebelumnya"
-      );
+    if (existing && existing?.status === "PENDING") {
+      return errorResponse(res, 400, "Murid ini sedang direkomendasikan");
     }
 
     const recommendation = await prisma.recommendation.create({
       data: {
-        studentId: student.id,
+        studentId: studentId,
         submittedById: user.id,
         status: "PENDING",
+        healthcare_id: healthCareId,
       },
     });
 
@@ -417,7 +442,8 @@ export const getResponseInstitution = async (req, res) => {
 export const createIntervention = async (req, res) => {
   try {
     const user = req.user;
-    if (user.role !== "healthcare") {
+    console.log({ role: user.role });
+    if (!["healthcare", "staff"].includes(user.role)) {
       throw new Error("User not have access to this resource");
     }
     const { id } = req.params;
@@ -519,6 +545,7 @@ export const getSingleRecommendation = async (req, res) => {
 export const getInterventionsBelongToInstitution = async (req, res) => {
   try {
     const user = req.user;
+
     const page = parseInt(req.query.page) || 0;
     const limit = parseInt(req.query.limit) || 10;
     const keyword = req.query.keyword ?? "";
@@ -533,18 +560,78 @@ export const getInterventionsBelongToInstitution = async (req, res) => {
             id: true,
           },
         },
+        staff: {
+          select: {
+            institution: {
+              select: {
+                id: true,
+              },
+            },
+          },
+        },
+        teacher: {
+          select: {
+            institution: {
+              select: {
+                id: true,
+              },
+            },
+          },
+        },
       },
     });
     if (!userInstitution) {
       throw new Error("user not found");
     }
+
     const interventions = await prisma.intervention.findMany({
       where: {
-        user: {
-          institution: {
-            id: userInstitution.institution.id,
-          },
-        },
+        ...(userInstitution.institution
+          ? {
+              user: {
+                OR: [
+                  {
+                    staff: {
+                      institution: {
+                        id: userInstitution?.staff?.institution?.id,
+                      },
+                    },
+                  },
+                  {
+                    teacher: {
+                      institution: {
+                        id: userInstitution?.teacher?.institution?.id,
+                      },
+                    },
+                  },
+                  {
+                    institution: {
+                      id: userInstitution?.institution?.id,
+                    },
+                  },
+                ],
+              },
+            }
+          : {
+              user: {
+                OR: [
+                  {
+                    staff: {
+                      institution: {
+                        id: userInstitution?.staff?.institution?.id,
+                      },
+                    },
+                  },
+                  {
+                    teacher: {
+                      institution: {
+                        id: userInstitution?.teacher?.institution?.id,
+                      },
+                    },
+                  },
+                ],
+              },
+            }),
         ...(keyword !== "" && {
           recommendation: {
             student: {
