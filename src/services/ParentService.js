@@ -9,19 +9,38 @@ export class ParentService {
     }
 
     const quisionerProgress = await prisma.$queryRaw`
-        SELECT fm.id AS familyId, fm.fullName, r.id AS response_id, u.id AS user_id FROM users u JOIN families f ON u.id =
-        f.userId LEFT JOIN family_members fm ON fm.id = (SELECT id FROM family_members fm2 WHERE fm2.familyId = f.id ORDER BY fm2.createdAt ASC limit 1) JOIN responses r ON r.familyMemberId = fm.id RIGHT JOIN quesioners q ON q.id = r.quisionerId WHERE q.for = "PARENT" AND (u.id =  ${user.id} OR u.id IS NULL);
+        SELECT
+    u.id AS userId,
+    f.id AS familyId,
+    fm.id AS familyMemberId,
+    fm.fullName,
+    q.id AS quesionerId,
+    q.title,
+    r.id AS responseId
+FROM
+    users u
+JOIN
+    families f ON u.id = f.userId
+JOIN
+    family_members fm ON f.id = fm.familyId
+JOIN
+    responses r ON fm.id = r.familyMemberId
+JOIN
+    quesioners q ON r.quisionerId = q.id
+WHERE
+    u.id = ${user.id}
+    AND q.for = "PARENT";
         `;
 
     const count = quisionerProgress.length;
-    const answered = quisionerProgress.reduce((acc, current) => {
-      if (!current.response_id) {
-        return acc;
-      }
-      return acc + 1;
-    }, 0);
 
-    const progress = Math.round((answered / count) * 100);
+    const total = await prisma.quesioner.findMany({
+      where: {
+        for: "PARENT",
+      },
+    });
+
+    const progress = Math.round((count / total.length) * 100);
 
     return { progress };
   }
@@ -131,7 +150,6 @@ export class ParentService {
       ...val,
       nutrition: val.nutrition.sort((a, b) => a.createdAt - b.createdAt),
     }));
-    console.log({ sorted });
     return {
       familyCount: familyMembers.length,
       childCount: childrens.length,
@@ -172,7 +190,6 @@ export class ParentService {
         (resourceCount / resourcesTotal) * 100
       );
 
-      console.log({ totalPercentage });
       let total = 0;
       if (totalPercentage < 33) {
         total = 1;

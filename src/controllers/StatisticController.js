@@ -160,11 +160,12 @@ export const parentStatisticController = {
   getDashboardSummary: async (req, res) => {
     try {
       const user = req.user;
+
       const [{ progress }, summary] = await Promise.all([
         ParentService.getQuisionerProgress(user.id),
         ParentService.getMemberSummaryCount(user.id),
       ]);
-      console.log({ progress, summary });
+
       res.status(200).json({
         status: "Success",
         message: "Summary statistic retrieved",

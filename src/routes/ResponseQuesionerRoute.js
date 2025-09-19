@@ -14,7 +14,7 @@ import { verifyToken } from "../middelware/verifyToken.js";
 
 const router = Router();
 
-router.get("/response/:id", verifyToken, getResponseQuesioner);
+router.get("/responses", verifyToken, getResponseQuesioner);
 router.get(
   "/response/institution/:id",
   verifyToken,

@@ -6,7 +6,6 @@ const prisma = new PrismaClient();
 export const getResponseQuesioner = async (req, res) => {
   try {
     const user = req.user;
-    const id = Number(req.params.id);
 
     const page = parseInt(req.query.page) || 0;
     const limit = parseInt(req.query.limit) || 10;
@@ -22,104 +21,51 @@ export const getResponseQuesioner = async (req, res) => {
     if (!family) {
       return errorResponse(res, 404, "Family not found");
     }
-
     const familyMember = await prisma.familyMember.findFirst({
       where: {
-        familyId: family.id,
-        OR: [
-          {
-            relation: "IBU",
-          },
-          {
-            relation: "AYAH",
-          },
-        ],
+        family: {
+          userId: user.id,
+        },
       },
+      orderBy: {
+        createdAt: "asc",
+      },
+      take: 1,
     });
 
     if (!familyMember) {
       return errorResponse(res, 404, "Family member not found");
     }
 
-    const response = await prisma.response.findFirst({
+    const quesionersWithResponse = await prisma.quesioner.findMany({
       where: {
-        familyMemberId: familyMember.id,
-        quisionerId: id,
+        for: "PARENT",
       },
       include: {
-        answers: true,
-      },
-    });
-
-    if (!response) {
-      return res.json({
-        totalRows: 0,
-        totalPage: 0,
-        page: 0,
-        limit: 10,
-        questions: [],
-        answers: [],
-      });
-    }
-
-    const questions = await prisma.question.findMany({
-      where: {
-        quesioner_id: id,
-        title: {
-          contains: search,
+        Response: {
+          where: {
+            familyMemberId: familyMember.id,
+          },
+          include: {
+            answers: true,
+            quesioner: {
+              include: {
+                questions: true,
+              },
+            },
+          },
         },
-      },
-      select: {
-        id: true,
-        quesioner_id: true,
-        title: true,
-        type: true,
-        options: {
-          select: {
-            id: true,
-            title: true,
-            score: true,
+        questions: {
+          include: {
+            options: true,
           },
         },
       },
     });
 
-    const questionIds = questions.map((q) => q.id);
-
-    const totalRows = await prisma.answer.count({
-      where: {
-        responseId: response.id,
-        questionId: {
-          in: questionIds,
-        },
-      },
-    });
-
-    const totalPage = Math.ceil(totalRows / limit);
-    const answers = await prisma.answer.findMany({
-      where: {
-        responseId: response.id,
-        questionId: {
-          in: questionIds,
-        },
-      },
-      skip: offset,
-      take: limit,
-      orderBy: {
-        id: "asc",
-      },
-    });
-
     return successResponse(
       res,
-      {
-        totalRows,
-        totalPage,
-        page,
-        limit,
-        questions,
-        answers,
-      },
+      quesionersWithResponse,
       "Berhasil mendapatkan data"
     );
   } catch (error) {

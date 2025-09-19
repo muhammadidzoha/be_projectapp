@@ -108,3 +108,25 @@ export const addCity = async (req, res) => {
     return errorResponse(res, err);
   }
 };
+
+export const getCitiesByProvince = async (req, res) => {
+  try {
+    const { province } = req.params;
+    if (!province) {
+      throw new Error("Province id is required");
+    }
+    const response = await prisma.city.findMany({
+      where: {
+        province_id: Number(province),
+      },
+      select: {
+        id: true,
+        name: true,
+        province_id: true,
+      },
+    });
+    return successResponse(res, response, "Cities retrieved successfully");
+  } catch (error) {
+    return errorResponse(res, error, "Failed to retrieve cities");
+  }
+};
