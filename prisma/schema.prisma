@@ -90,7 +90,7 @@ model Province {
 
 model City {
   id          Int      @id @default(autoincrement())
-  name        String   @unique @db.VarChar(255)
+  name        String   @db.VarChar(255)
   province_id Int      @db.Int
   created_at  DateTime @default(now()) @db.Timestamp(2)
   updated_at  DateTime @default(now()) @db.Timestamp(2)
@@ -98,6 +98,7 @@ model City {
   institutions Institution[] @relation("CityInstitution")
   province     Province      @relation("ProvinceCity", fields: [province_id], references: [id])
 
+  @@unique([province_id, name])
   @@map("cities")
 }
 

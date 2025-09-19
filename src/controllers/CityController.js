@@ -9,6 +9,7 @@ export const getCities = async (req, res) => {
       select: {
         id: true,
         name: true,
+        province_id: true,
       },
     });
     return successResponse(res, response, "Cities retrieved successfully");
