@@ -10,22 +10,11 @@ export const getClasses = async (req, res) => {
   const offset = limit * page;
 
   try {
-    const user = req.user;
-    if (!user) {
-      throw new Error("User tidak ditemukan");
+    const { id } = req.params;
+    if (!id) {
+      throw new Error("school id is required to fetch classes");
     }
-    const userInstitution = await prisma.user.findUnique({
-      where: {
-        id: user.id,
-      },
-      select: {
-        institution: {
-          select: {
-            id: true,
-          },
-        },
-      },
-    });
+    console.log({ id });
     const totalRows = await prisma.class.count({
       where: {
         name: {
@@ -40,7 +29,96 @@ export const getClasses = async (req, res) => {
         name: {
           contains: search,
         },
-        school_id: userInstitution.institution.id,
+        school_id: +id,
+      },
+      select: {
+        id: true,
+        name: true,
+        teacher: {
+          select: {
+            id: true,
+            fullName: true,
+          },
+        },
+      },
+      skip: offset,
+      take: limit,
+      orderBy: {
+        id: "asc",
+      },
+    });
+    return successResponse(
+      res,
+      { totalRows, totalPage, page, limit, classes },
+      "Classes retrieved successfully"
+    );
+  } catch (error) {
+    return errorResponse(res, error, "Failed to retrieve classes");
+  }
+};
+
+export const getClassesBelongsToSchool = async (req, res) => {
+  const page = parseInt(req.query.page) || 0;
+  const limit = parseInt(req.query.limit) || 10;
+  const search = req.query.search || "";
+  const offset = limit * page;
+
+  try {
+    const user = req.user;
+    if (!user) {
+      throw new Error("User tidak ditemukan");
+    }
+    let userInstitution = null;
+    if (user.role === "school") {
+      userInstitution = await prisma.user.findUnique({
+        where: {
+          id: user.id,
+        },
+        select: {
+          institution: {
+            select: {
+              id: true,
+            },
+          },
+        },
+      });
+    } else if (user.role === "teacher") {
+      const teacher = await prisma.teacher.findUnique({
+        where: {
+          user_id: user.id,
+        },
+        select: {
+          institution: {
+            select: {
+              id: true,
+            },
+          },
+        },
+      });
+      userInstitution = teacher;
+    }
+
+    const totalRows = await prisma.class.count({
+      where: {
+        name: {
+          contains: search,
+        },
+      },
+    });
+
+    const totalPage = Math.ceil(totalRows / limit);
+    const classes = await prisma.class.findMany({
+      where: {
+        name: {
+          contains: search,
+        },
+        ...(user.role === "school"
+          ? {
+              school_id: userInstitution.institution.id,
+            }
+          : {
+              school_id: userInstitution.institution.id,
+            }),
       },
       select: {
         id: true,

@@ -118,7 +118,6 @@ export const getStudentByUser = async (req, res) => {
 
   try {
     const user = req.user;
-    console.log({ user });
     if (!user || !["school", "teacher"].includes(user.role)) {
       return errorResponse(
         res,
@@ -151,8 +150,6 @@ export const getStudentByUser = async (req, res) => {
 
       institution = teacher.institution;
     }
-
-    console.log({ institution });
 
     if (!institution) {
       return errorResponse(res, 404, "Institution not found for this user");
@@ -189,7 +186,6 @@ export const getStudentByUser = async (req, res) => {
       },
     });
     let students = [];
-    console.log({ institution });
     if (user.role === "school") {
       students = await prisma.familyMember.findMany({
         where: {
@@ -274,9 +270,7 @@ export const getStudentByUser = async (req, res) => {
           id: "asc",
         },
       });
-      console.log({ students });
     } else if (user.role === "teacher") {
-      console.log({ institution });
       students = await prisma.familyMember.findMany({
         where: {
           relation: "ANAK",
@@ -358,7 +352,6 @@ export const getStudentByUser = async (req, res) => {
           id: "asc",
         },
       });
-      console.log({ students });
     }
 
     const newStudents = students.map((student) => {
@@ -378,6 +371,7 @@ export const getStudentByUser = async (req, res) => {
       "Students retrieved successfully"
     );
   } catch (error) {
+    console.log({ error });
     return errorResponse(res, error, "Failed to retrieve students");
   }
 };

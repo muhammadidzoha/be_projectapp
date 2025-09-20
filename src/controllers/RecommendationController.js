@@ -13,19 +13,39 @@ export const getRecomendations = async (req, res) => {
     if (!user) {
       throw new Error("User not authorized");
     }
-
-    const userInstitution = await prisma.user.findUnique({
-      where: {
-        id: user.id,
-      },
-      include: {
-        institution: {
-          select: {
-            id: true,
+    let userInstitution = null;
+    if (user.role === "healthcare") {
+      userInstitution = await prisma.user.findUnique({
+        where: {
+          id: user.id,
+        },
+        include: {
+          institution: {
+            select: {
+              id: true,
+            },
           },
         },
-      },
-    });
+      });
+    } else if (user.role === "staff") {
+      const staff = await prisma.user.findUnique({
+        where: {
+          id: user.id,
+        },
+        select: {
+          staff: {
+            include: {
+              institution: {
+                select: {
+                  id: true,
+                },
+              },
+            },
+          },
+        },
+      });
+      userInstitution = staff.staff;
+    }
     if (!userInstitution) {
       throw new Error("User dont have institution");
     }
@@ -145,6 +165,7 @@ export const getRecomendations = async (req, res) => {
       "List of recommendations retrieved successfully"
     );
   } catch (error) {
+    console.log({ error });
     return errorResponse(res, error, "Internal server error");
   }
 };
@@ -152,8 +173,11 @@ export const getRecomendations = async (req, res) => {
 export const createRecommendation = async (req, res) => {
   try {
     const user = req.user;
+    if (!user) {
+      throw new Error("User not found");
+    }
 
-    if (user.role !== "school") {
+    if (!["school", "teacher"].includes(user.role)) {
       return errorResponse(
         res,
         403,
@@ -190,7 +214,6 @@ export const createRecommendation = async (req, res) => {
       errorResponse(res, 400, "Murid ini sedang direkomendasikan");
       return;
     }
-
     const recommendation = await prisma.recommendation.create({
       data: {
         studentId: studentId,
@@ -584,6 +607,7 @@ export const getInterventionsBelongToInstitution = async (req, res) => {
     if (!userInstitution) {
       throw new Error("user not found");
     }
+    console.log({ userInstitution });
 
     const interventions = await prisma.intervention.findMany({
       where: {
@@ -857,6 +881,11 @@ export const getInterventionsBelongToFamily = async (req, res) => {
                 phone: true,
               },
             },
+            staff: {
+              include: {
+                institution: true,
+              },
+            },
             username: true,
           },
         },
@@ -878,10 +907,24 @@ export const getInterventionsBelongToFamily = async (req, res) => {
         skip,
         page,
         limit,
-        interventions: interventions.map((val) => ({
-          ...val,
-          options: JSON.parse(val.options),
-        })),
+        interventions: interventions.map((val) => {
+          if (val?.user?.institution) {
+            return {
+              ...val,
+              options: JSON.parse(val.options),
+            };
+          } else if (val?.user?.staff?.institution?.id) {
+            return {
+              ...val,
+              user: {
+                ...val.user,
+                institution: {
+                  ...val.user.staff.institution,
+                },
+              },
+            };
+          }
+        }),
       },
     });
   } catch (err) {
