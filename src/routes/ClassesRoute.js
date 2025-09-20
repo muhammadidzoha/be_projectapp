@@ -5,11 +5,12 @@ import {
   deleteClasses,
   updateClasses,
 } from "../controllers/ClassesController.js";
+import { verifyToken } from "../middelware/verifyToken.js";
 
 const router = Router();
 
-router.get("/classes", getClasses);
-router.post("/classes", createClasses);
+router.get("/classes", verifyToken, getClasses);
+router.post("/classes", verifyToken, createClasses);
 router.put("/classes/:id", updateClasses);
 router.delete("/classes/:id", deleteClasses);
 

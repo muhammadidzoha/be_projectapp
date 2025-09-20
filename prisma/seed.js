@@ -23,7 +23,7 @@ async function main() {
   await seedQuesioners();
   await seedQuestions();
   await seedOptions();
-  await seedClasses();
+  // await seedClasses();
   await seedJobTypes();
   await seedNutritionStatus();
 

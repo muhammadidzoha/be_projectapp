@@ -14,6 +14,18 @@ export const getClasses = async (req, res) => {
     if (!user) {
       throw new Error("User tidak ditemukan");
     }
+    const userInstitution = await prisma.user.findUnique({
+      where: {
+        id: user.id,
+      },
+      select: {
+        institution: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
     const totalRows = await prisma.class.count({
       where: {
         name: {
@@ -28,6 +40,7 @@ export const getClasses = async (req, res) => {
         name: {
           contains: search,
         },
+        school_id: userInstitution.institution.id,
       },
       select: {
         id: true,
@@ -59,25 +72,62 @@ export const createClasses = async (req, res) => {
   const { classes } = req.body;
 
   try {
+    const user = req.user;
+    if (!user) {
+      throw new Error("User tidak ditemukan");
+    }
+    const userInstitution = await prisma.user.findUnique({
+      where: {
+        id: user.id,
+      },
+      select: {
+        institution: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
+    if (!userInstitution) {
+      throw new Error("User dont have institution");
+    }
+    console.log({ classes });
     if (Array.isArray(classes)) {
       const createdClasses = [];
       for (const cls of classes) {
         const existingClass = await prisma.class.findUnique({
-          where: { name: cls.name },
+          where: {
+            school_id_name: {
+              name: cls.name,
+              school_id: userInstitution.institution.id,
+            },
+          },
         });
 
         if (!existingClass) {
           const newClass = await prisma.class.create({
-            data: { name: cls.name },
+            data: { name: cls.name, school_id: userInstitution.institution.id },
           });
           createdClasses.push(newClass);
+        } else {
+          return errorResponse(
+            res,
+            "Kelas sudah tersedia",
+            "Tidak dapat membuat kelas yang sudah ada"
+          );
         }
       }
 
       return successResponse(res, createdClasses, "Berhasil membuat kelas");
     } else {
+      console.log("Duplikat");
       const existingClass = await prisma.class.findUnique({
-        where: { name: classes.name },
+        where: {
+          school_id_name: {
+            name: classes.name,
+            school_id: userInstitution.institution.id,
+          },
+        },
       });
 
       if (existingClass) {
@@ -95,6 +145,7 @@ export const createClasses = async (req, res) => {
       return successResponse(res, newClass, "Berhasil membuat kelas");
     }
   } catch (error) {
+    console.log({ error });
     return errorResponse(res, error, "Internal server error");
   }
 };
