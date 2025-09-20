@@ -187,7 +187,8 @@ export const createRecommendation = async (req, res) => {
     });
 
     if (existing && existing?.status === "PENDING") {
-      return errorResponse(res, 400, "Murid ini sedang direkomendasikan");
+      errorResponse(res, 400, "Murid ini sedang direkomendasikan");
+      return;
     }
 
     const recommendation = await prisma.recommendation.create({

@@ -157,6 +157,16 @@ export const getStudentByUser = async (req, res) => {
     });
 
     const totalPage = Math.ceil(totalRows / limit);
+    const studentRecommending = await prisma.recommendation.findMany({
+      where: {
+        status: "PENDING",
+      },
+      distinct: "studentId",
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+    console.log({ studentRecommending });
     const students = await prisma.familyMember.findMany({
       where: {
         relation: "ANAK",
@@ -245,9 +255,20 @@ export const getStudentByUser = async (req, res) => {
       },
     });
 
+    const newStudents = students.map((student) => {
+      const isRecommending = studentRecommending.some(
+        (st) => st.studentId === student?.student?.id
+      );
+
+      return {
+        ...student,
+        isRecommending: isRecommending ?? false,
+      };
+    });
+
     return successResponse(
       res,
-      { totalRows, totalPage, page, limit, students },
+      { totalRows, totalPage, page, limit, students: newStudents },
       "Students retrieved successfully"
     );
   } catch (error) {
