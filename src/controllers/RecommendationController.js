@@ -763,6 +763,7 @@ export const getInterventionsBelongToInstitution = async (req, res) => {
                     email: true,
                   },
                 },
+                fullName: true,
               },
             },
           },
@@ -793,6 +794,8 @@ export const getInterventionsBelongToInstitution = async (req, res) => {
         },
       },
     }));
+
+    console.log({ newInterventions: newInterventions[0].user });
 
     const totalPages = Math.ceil(newInterventions.length / limit);
 
