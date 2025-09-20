@@ -118,7 +118,8 @@ export const getStudentByUser = async (req, res) => {
 
   try {
     const user = req.user;
-    if (!user || user.role !== "school") {
+    console.log({ user });
+    if (!user || !["school", "teacher"].includes(user.role)) {
       return errorResponse(
         res,
         404,
@@ -126,11 +127,32 @@ export const getStudentByUser = async (req, res) => {
       );
     }
 
-    const institution = await prisma.institution.findFirst({
-      where: {
-        user_id: user.id,
-      },
-    });
+    let institution = null;
+    let teacher = null;
+    if (user.role === "school") {
+      institution = await prisma.institution.findFirst({
+        where: {
+          user_id: user.id,
+        },
+      });
+    } else if (user.role === "teacher") {
+      teacher = await prisma.teacher.findUnique({
+        where: {
+          user_id: user.id,
+        },
+        include: {
+          institution: {
+            select: {
+              id: true,
+            },
+          },
+        },
+      });
+
+      institution = teacher.institution;
+    }
+
+    console.log({ institution });
 
     if (!institution) {
       return errorResponse(res, 404, "Institution not found for this user");
@@ -166,94 +188,178 @@ export const getStudentByUser = async (req, res) => {
         createdAt: "desc",
       },
     });
-    console.log({ studentRecommending });
-    const students = await prisma.familyMember.findMany({
-      where: {
-        relation: "ANAK",
-        education: "SD",
-        fullName: {
-          contains: search,
-        },
-        student: {
-          institution: {
-            id: institution.id,
+    let students = [];
+    console.log({ institution });
+    if (user.role === "school") {
+      students = await prisma.familyMember.findMany({
+        where: {
+          relation: "ANAK",
+          education: "SD",
+          fullName: {
+            contains: search,
           },
-          ...(filteredClass && {
-            class: {
-              name: filteredClass,
-            },
-          }),
-        },
-      },
-      select: {
-        id: true,
-        fullName: true,
-        nutrition: {
-          select: {
-            id: true,
-            height: true,
-            weight: true,
-            birthWeight: true,
-            bmi: true,
-            nutritionStatus: {
-              select: {
-                id: true,
-                information: true,
-                status: true,
-              },
-            },
+          student: {
+            // institution: {
+            //   id: institution.id,
+            // },.
+            schoolId: institution.id,
           },
         },
-        student: {
-          select: {
-            id: true,
-            nis: true,
-            schoolYear: true,
-            semester: true,
-            institution: {
-              select: {
-                id: true,
-                name: true,
-                address: true,
-                phone: true,
-                email: true,
-                province: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
-                },
-                city: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
-                },
-              },
-            },
-            class: {
-              select: {
-                id: true,
-                name: true,
-                teacher: {
-                  select: {
-                    id: true,
-                    fullName: true,
-                    address: true,
-                    phone: true,
-                  },
+        select: {
+          id: true,
+          fullName: true,
+          nutrition: {
+            select: {
+              id: true,
+              height: true,
+              weight: true,
+              birthWeight: true,
+              bmi: true,
+              nutritionStatus: {
+                select: {
+                  id: true,
+                  information: true,
+                  status: true,
                 },
               },
             },
           },
+          student: {
+            select: {
+              id: true,
+              nis: true,
+              schoolYear: true,
+              semester: true,
+              institution: {
+                select: {
+                  id: true,
+                  name: true,
+                  address: true,
+                  phone: true,
+                  email: true,
+                  province: {
+                    select: {
+                      id: true,
+                      name: true,
+                    },
+                  },
+                  city: {
+                    select: {
+                      id: true,
+                      name: true,
+                    },
+                  },
+                },
+              },
+              class: {
+                select: {
+                  id: true,
+                  name: true,
+                  teacher: {
+                    select: {
+                      id: true,
+                      fullName: true,
+                      address: true,
+                      phone: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
-      },
-      skip: offset,
-      take: limit,
-      orderBy: {
-        id: "asc",
-      },
-    });
+        skip: offset,
+        take: limit,
+        orderBy: {
+          id: "asc",
+        },
+      });
+      console.log({ students });
+    } else if (user.role === "teacher") {
+      console.log({ institution });
+      students = await prisma.familyMember.findMany({
+        where: {
+          relation: "ANAK",
+          education: "SD",
+          fullName: {
+            contains: search,
+          },
+          student: {
+            schoolId: institution.id,
+          },
+        },
+
+        select: {
+          id: true,
+          fullName: true,
+          nutrition: {
+            select: {
+              id: true,
+              height: true,
+              weight: true,
+              birthWeight: true,
+              bmi: true,
+              nutritionStatus: {
+                select: {
+                  id: true,
+                  information: true,
+                  status: true,
+                },
+              },
+            },
+          },
+          student: {
+            select: {
+              id: true,
+              nis: true,
+              schoolYear: true,
+              semester: true,
+              institution: {
+                select: {
+                  id: true,
+                  name: true,
+                  address: true,
+                  phone: true,
+                  email: true,
+                  province: {
+                    select: {
+                      id: true,
+                      name: true,
+                    },
+                  },
+                  city: {
+                    select: {
+                      id: true,
+                      name: true,
+                    },
+                  },
+                },
+              },
+              class: {
+                select: {
+                  id: true,
+                  name: true,
+                  teacher: {
+                    select: {
+                      id: true,
+                      fullName: true,
+                      address: true,
+                      phone: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        skip: offset,
+        take: limit,
+        orderBy: {
+          id: "asc",
+        },
+      });
+      console.log({ students });
+    }
 
     const newStudents = students.map((student) => {
       const isRecommending = studentRecommending.some(

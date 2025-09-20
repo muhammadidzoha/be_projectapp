@@ -10,6 +10,10 @@ export const getClasses = async (req, res) => {
   const offset = limit * page;
 
   try {
+    const user = req.user;
+    if (!user) {
+      throw new Error("User tidak ditemukan");
+    }
     const totalRows = await prisma.class.count({
       where: {
         name: {

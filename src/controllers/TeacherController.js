@@ -11,6 +11,26 @@ export const getTeachers = async (req, res) => {
   const offset = limit * page;
 
   try {
+    const user = req.user;
+    if (!user) {
+      throw new Error("user tidak ditemukan");
+    }
+    const userInstitution = await prisma.user.findUnique({
+      where: {
+        id: user.id,
+      },
+      select: {
+        institution: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
+    if (!userInstitution) {
+      throw new Error("User tidak memiliki institusi");
+    }
+    console.log({ userInstitution });
     const totalRows = await prisma.teacher.count({
       where: {
         OR: [
@@ -25,6 +45,7 @@ export const getTeachers = async (req, res) => {
             },
           },
         ],
+        school_id: userInstitution.institution.id,
       },
     });
 
@@ -43,6 +64,7 @@ export const getTeachers = async (req, res) => {
             },
           },
         ],
+        school_id: userInstitution.institution.id,
       },
       select: {
         id: true,
@@ -96,6 +118,7 @@ export const getTeachers = async (req, res) => {
       "Teachers retrieved successfully"
     );
   } catch (error) {
+    console.log({ error });
     return errorResponse(res, error, "Failed to retrieve teachers");
   }
 };

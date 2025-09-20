@@ -9,7 +9,7 @@ import { verifyToken } from "../middelware/verifyToken.js";
 
 const router = Router();
 
-router.get("/teachers", getTeachers);
+router.get("/teachers", verifyToken, getTeachers);
 router.post("/teachers", verifyToken, createTeacher);
 router.put("/teachers/:id", updateTeacher);
 router.delete("/teachers/:id", deleteTeacher);
