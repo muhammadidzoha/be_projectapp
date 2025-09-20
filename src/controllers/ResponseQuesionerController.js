@@ -574,15 +574,11 @@ export const showResponseForParent = async (req, res) => {
     const familyMember = await prisma.familyMember.findFirst({
       where: {
         familyId: userId,
-        OR: [
-          {
-            relation: "IBU",
-          },
-          {
-            relation: "AYAH",
-          },
-        ],
       },
+      orderBy: {
+        createdAt: "asc",
+      },
+      take: 1,
     });
 
     if (!familyMember) {

@@ -105,14 +105,32 @@ export const getUserById = async (req, res) => {
             phone: true,
           },
         },
+        teacher: {
+          include: {
+            institution: true,
+          },
+        },
+        staff: {
+          include: {
+            institution: true,
+          },
+        },
       },
     });
+    const newUser = {
+      ...user,
+      institution: {
+        ...user.institution,
+        ...user?.teacher?.institution,
+        ...user?.staff?.institution,
+      },
+    };
     if (!user) {
       return errorResponse(res, null, "User Not Found");
     }
     return successResponse(
       res,
-      user,
+      newUser,
       `User with ID: ${id} retrieved successfully`
     );
   } catch (error) {

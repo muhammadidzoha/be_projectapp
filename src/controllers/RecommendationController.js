@@ -794,27 +794,6 @@ export const getInterventionsBelongToInstitution = async (req, res) => {
       },
     }));
 
-    // ...val,
-    //           options: JSON.parse(val.options),
-    //           recommendation: {
-    //             ...val.recommendation,
-    //             submittedBy: {
-    //               ...val.recommendation.submittedBy,
-    //               institution: {
-    //                 ...val.recommendation.submittedBy.teacher.institution,
-    //               },
-    //             },
-    //           },
-    //           user: {
-    //             ...val.user,
-    //             institution: {
-    //               ...val.user.staff.institution,
-    //             },
-    //           },
-    console.log({
-      newInterventions: newInterventions[0].recommendation.submittedBy.teacher,
-    });
-
     const totalPages = Math.ceil(newInterventions.length / limit);
 
     res.status(200).json({
