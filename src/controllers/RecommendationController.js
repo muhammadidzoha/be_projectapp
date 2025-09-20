@@ -607,7 +607,6 @@ export const getInterventionsBelongToInstitution = async (req, res) => {
     if (!userInstitution) {
       throw new Error("user not found");
     }
-    console.log({ userInstitution });
 
     const interventions = await prisma.intervention.findMany({
       where: {
@@ -681,6 +680,12 @@ export const getInterventionsBelongToInstitution = async (req, res) => {
                     name: true,
                   },
                 },
+                institution: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
                 familyMember: {
                   select: {
                     fullName: true,
@@ -723,6 +728,11 @@ export const getInterventionsBelongToInstitution = async (req, res) => {
                     name: true,
                   },
                 },
+                teacher: {
+                  include: {
+                    institution: true,
+                  },
+                },
               },
             },
           },
@@ -743,6 +753,18 @@ export const getInterventionsBelongToInstitution = async (req, res) => {
               },
             },
             username: true,
+            staff: {
+              select: {
+                institution: {
+                  select: {
+                    name: true,
+                    address: true,
+                    phone: true,
+                    email: true,
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -753,7 +775,47 @@ export const getInterventionsBelongToInstitution = async (req, res) => {
         },
       },
     });
-    const totalPages = Math.ceil(interventions.length / limit);
+    const newInterventions = interventions.map((int) => ({
+      ...int,
+      recommendation: {
+        ...int.recommendation,
+        submittedBy: {
+          ...int.recommendation.submittedBy,
+          institution: {
+            ...int.recommendation.submittedBy.teacher.institution,
+          },
+        },
+      },
+      user: {
+        ...int.user,
+        institution: {
+          ...int.user.staff.institution,
+        },
+      },
+    }));
+
+    // ...val,
+    //           options: JSON.parse(val.options),
+    //           recommendation: {
+    //             ...val.recommendation,
+    //             submittedBy: {
+    //               ...val.recommendation.submittedBy,
+    //               institution: {
+    //                 ...val.recommendation.submittedBy.teacher.institution,
+    //               },
+    //             },
+    //           },
+    //           user: {
+    //             ...val.user,
+    //             institution: {
+    //               ...val.user.staff.institution,
+    //             },
+    //           },
+    console.log({
+      newInterventions: newInterventions[0].recommendation.submittedBy.teacher,
+    });
+
+    const totalPages = Math.ceil(newInterventions.length / limit);
 
     res.status(200).json({
       status: "Success",
@@ -763,7 +825,7 @@ export const getInterventionsBelongToInstitution = async (req, res) => {
         skip,
         page,
         limit,
-        interventions: interventions.map((val) => ({
+        interventions: newInterventions.map((val) => ({
           ...val,
           options: JSON.parse(val.options),
         })),
@@ -820,6 +882,12 @@ export const getInterventionsBelongToFamily = async (req, res) => {
                     name: true,
                   },
                 },
+                institution: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
                 familyMember: {
                   select: {
                     fullName: true,
@@ -862,6 +930,11 @@ export const getInterventionsBelongToFamily = async (req, res) => {
                     name: true,
                   },
                 },
+                teacher: {
+                  include: {
+                    institution: true,
+                  },
+                },
               },
             },
           },
@@ -899,6 +972,8 @@ export const getInterventionsBelongToFamily = async (req, res) => {
     });
     const totalPages = interventions.length;
 
+    console.log({ interventions: interventions[0].recommendation.submittedBy });
+
     res.status(200).json({
       status: "Success",
       message: "Intervention belongs to family fetched",
@@ -916,10 +991,34 @@ export const getInterventionsBelongToFamily = async (req, res) => {
           } else if (val?.user?.staff?.institution?.id) {
             return {
               ...val,
+              options: JSON.parse(val.options),
+              recommendation: {
+                ...val.recommendation,
+                submittedBy: {
+                  ...val.recommendation.submittedBy,
+                  institution: {
+                    ...val.recommendation.submittedBy.teacher.institution,
+                  },
+                },
+              },
               user: {
                 ...val.user,
                 institution: {
                   ...val.user.staff.institution,
+                },
+              },
+            };
+          } else {
+            return {
+              ...val,
+              options: JSON.parse(val.options),
+              recommendation: {
+                ...val.recommendation,
+                submittedBy: {
+                  ...val.recommendation.submittedBy,
+                  institution: {
+                    ...val.recommendation.submittedBy.teacher.institution,
+                  },
                 },
               },
             };
