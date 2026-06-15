@@ -16,3 +16,36 @@ export const getCities = async (req, res) => {
     return errorResponse(res, error, "Failed to retrieve cities");
   }
 };
+
+export const getCitiesByProvince = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const response = await prisma.city.findMany({
+      where: { province_id: Number(id) },
+      select: {
+        id: true,
+        name: true,
+        province_id: true,
+      }
+    });
+    return successResponse(res, response, "Berhasil mendapatkan data kota berdasarkan provinsi");
+  } catch (error) {
+    return errorResponse(res, error, "Gagal mendapatkan data kota berdasarkan provinsi");
+  }
+}
+
+export const createCity = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name } = req.body;
+    const response = await prisma.city.create({
+      data: {
+        name,
+        province_id: Number(id),
+      }
+    });
+    return successResponse(res, response, "Berhasil menambahkan kota baru");
+  } catch (error) {
+    return errorResponse(res, error, "Gagal menambahkan kota baru");
+  }
+}

@@ -34,7 +34,6 @@ model User {
   interventions Intervention[]
   staff Staff?
 
-
   @@map("users")
 }
 
