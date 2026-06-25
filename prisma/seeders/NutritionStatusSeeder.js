@@ -7,11 +7,21 @@ export const seedNutritionStatus = async () => {
     const existingNutritionStatus = await prisma.nutritionStatus.findMany({
       where: {
         OR: [
-          { status: "KURUS", information: "Kekurangan bb tingkat berat" },
-          { status: "KURUS", information: "Kekurangan bb tingkat ringan" },
-          { status: "NORMAL", information: "Gizi normal" },
-          { status: "GEMUK", information: "Kelebihan bb tingkat ringan" },
-          { status: "GEMUK", information: "Kelebihan bb tingkat berat" },
+          {
+            displayName: "GIZI BURUK-KURANG",
+            status: "GIZI_BURUK_KURANG",
+            information: "Kekurangan bb tingkat ringan sampai berat",
+          },
+          {
+            displayName: "GIZI BAIK",
+            status: "GIZI_BAIK",
+            information: "Gizi normal",
+          },
+          {
+            displayName: "OVERWEIGHT-OBESITAS",
+            status: "OVERWEIGHT_OBESITAS",
+            information: "Kelebihan bb tingkat ringan sampai berat",
+          },
         ],
       },
     });
@@ -23,11 +33,21 @@ export const seedNutritionStatus = async () => {
 
     await prisma.nutritionStatus.createMany({
       data: [
-        { status: "KURUS", information: "Kekurangan bb tingkat berat" },
-        { status: "KURUS", information: "Kekurangan bb tingkat ringan" },
-        { status: "NORMAL", information: "Gizi normal" },
-        { status: "GEMUK", information: "Kelebihan bb tingkat ringan" },
-        { status: "GEMUK", information: "Kelebihan bb tingkat berat" },
+        {
+          displayName: "GIZI BURUK-KURANG",
+          status: "GIZI_BURUK_KURANG",
+          information: "Kekurangan bb tingkat ringan sampai berat",
+        },
+        {
+          displayName: "GIZI BAIK",
+          status: "GIZI_BAIK",
+          information: "Gizi normal",
+        },
+        {
+          displayName: "OVERWEIGHT-OBESITAS",
+          status: "OVERWEIGHT_OBESITAS",
+          information: "Kelebihan bb tingkat ringan sampai berat",
+        },
       ],
     });
     console.log("Nutrition status seeded successfully");

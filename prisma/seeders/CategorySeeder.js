@@ -10,7 +10,6 @@ export const seedCategories = async () => {
           { name: "Tingkat Pengetahuan Gizi Seimbang" },
           { name: "Kebiasaan Sehari-hari Anak" },
           { name: "Pelayanan Kesehatan Sekolah" },
-          { name: "Lingkungan Sekolah" },
         ],
       },
     });
@@ -33,10 +32,6 @@ export const seedCategories = async () => {
         {
           name: "Pelayanan Kesehatan Sekolah",
           path: "/pelayanan-kesehatan-sekolah",
-        },
-        {
-          name: "Lingkungan Sekolah",
-          path: "/lingkungan-sekolah",
         },
       ],
     });

@@ -7,9 +7,9 @@ import { seedUser } from "./seeders/UserSeeder.js";
 import { seedQuestions } from "./seeders/QuestionSeeder.js";
 import { seedQuesioners } from "./seeders/QuesionerSeeder.js";
 import { seedOptions } from "./seeders/OptionSeeder.js";
-import { seedClasses } from "./seeders/ClassesSeeder.js";
 import { seedJobTypes } from "./seeders/JobTypeSeeder.js";
 import { seedNutritionStatus } from "./seeders/NutritionStatusSeeder.js";
+import { seedIMT } from "./seeders/IMTSeeder.js";
 
 async function main() {
   console.log("Starting seeding process...");
@@ -23,9 +23,9 @@ async function main() {
   await seedQuesioners();
   await seedQuestions();
   await seedOptions();
-  await seedClasses();
   await seedJobTypes();
   await seedNutritionStatus();
+  await seedIMT();
 
   console.log("Seeding process completed!");
 }

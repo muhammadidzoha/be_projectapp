@@ -69,7 +69,10 @@ model Institution {
   familyMember     FamilyMember[]  @relation("FamilyMemberInstitution")
   student          Student[]       @relation("StudentInstitution")
   Response         Response[]      @relation("InstitutionResponse")
+  classes          Class[]         @relation("ClassInstitution")
   staffs Staff[]
+  schoolPartnerships     Partnership[] @relation("SchoolPartnership")
+  healthcarePartnerships Partnership[] @relation("HealthcarePartnership")
 
   @@map("institutions")
 }
@@ -130,6 +133,7 @@ model Question {
   title        String       @db.Text
   type         QuestionType
   is_required  Boolean      @default(true)
+  is_negative  Boolean      @default(false)
   created_at   DateTime     @default(now()) @db.Timestamp(2)
   updated_at   DateTime     @default(now()) @db.Timestamp(2)
 
@@ -140,10 +144,8 @@ model Question {
 }
 
 enum QuestionType {
-  MULTIPLE_CHOICE
   BOOLEAN
   SCALE
-  TEXT
 }
 
 model Option {
@@ -185,9 +187,11 @@ model Class {
   created_at DateTime @default(now()) @db.Timestamp(2)
   updated_at DateTime @default(now()) @db.Timestamp(2)
   teacher_id String?  @db.VarChar(255)
+  school_id Int      @db.Int
 
   teacher  Teacher?  @relation("TeacherClass", fields: [teacher_id], references: [id], onDelete: SetNull)
   students Student[] @relation("ClassStudent")
+  institution Institution @relation("ClassInstitution", fields: [school_id], references: [id], onDelete: Cascade)
 
   @@map("classes")
 }
@@ -212,6 +216,7 @@ enum GENDER {
 }
 
 enum EDUCATION {
+  TIDAK_SEKOLAH
   SD
   SMP
   SMA
@@ -233,40 +238,71 @@ enum RELATION {
 model FamilyMember {
   id            String    @id @default(uuid())
   fullName      String    @db.VarChar(255)
-  birthDate     DateTime  @db.Date
+  birthDate     DateTime?  @db.Date
+  age           Int?       @db.Int
   education     EDUCATION
   jobId         Int?      @db.Int
-  residenceId   Int       @db.Int
-  gender        GENDER
+  gender        GENDER?
   relation      RELATION
   familyId      String    @db.VarChar(255)
   institutionId Int?      @db.Int
   phone         String?   @db.VarChar(255)
   isCompleted   Boolean   @default(false)
+  socioEconomicId Int     @db.Int
   createdAt     DateTime  @default(now()) @db.Timestamp(2)
   updatedAt     DateTime  @default(now()) @db.Timestamp(2)
 
   family      Family       @relation("FamilyMemberFamily", fields: [familyId], references: [id], onDelete: Cascade)
   job         Job?         @relation("FamilyMemberJob", fields: [jobId], references: [id], onDelete: SetNull)
-  residence   Residence    @relation("FamilyMemberResidence", fields: [residenceId], references: [id], onDelete: Cascade)
   nutrition   Nutrition[]  @relation("FamilyMemberNutrition")
   institution Institution? @relation("FamilyMemberInstitution", fields: [institutionId], references: [id], onDelete: SetNull)
   student     Student?     @relation("StudentFamilyMember")
   Response    Response[]   @relation("FamilyMemberResponse")
+  SocioEconomic SocioEconomic @relation(fields: [socioEconomicId], references: [id], onDelete: Cascade)
 
   @@map("family_members")
 }
 
+enum CHILDRENCOUNT {
+  SATU
+  DUA_SAMPAI_TIGA
+  EMPAT_ATAU_LEBIH
+}
+
+enum FAMILYINCOMELEVEL {
+  KURANG_DARI_LIMA_JUTA
+  LIMA_JUTA_SAMPAI_SEPULUH_JUTA
+  LEBIH_DARI_SEPULUH_JUTA
+}
+
+enum UNDERFIVECOUNT {
+  TIDAK_ADA
+  SATU
+  DUA_SAMPAI_TIGA
+  EMPAT_ATAU_LEBIH
+}
+
+model SocioEconomic {
+  id        Int      @id @default(autoincrement()) @db.Int
+  residenceStatus RESIDENCESTATUS
+  address String?         @db.VarChar(255)
+  childrenCount CHILDRENCOUNT
+  underFiveCount UNDERFIVECOUNT
+  familyIncomeLevel FAMILYINCOMELEVEL
+  createdAt DateTime @default(now()) @db.Timestamp(2)
+  updatedAt DateTime @default(now()) @db.Timestamp(2)
+
+  familyMembers FamilyMember[]
+
+  @@map("socio_economic")
+}
+
 enum JOBTYPE {
-  PEKERJA_TETAP
-  PEKERJA_TIDAK_TETAP
-  PEKERJA_PARUH_WAKTU
-  PEKERJA_FREELANCE
-  PEKERJA_MUSIMAN
-  PEKERJA_KONTRAK
-  PEGAWAI_NEGERI_SIPIL
-  PEGAWAI_BUMN
-  PEGAWAI_SWASTA
+  TIDAK_BEKERJA
+  BURUH
+  KARYAWAN_SWASTA
+  ASN_BUMN
+  WIRASWASTA
 }
 
 model JobType {
@@ -280,23 +316,8 @@ model JobType {
   @@map("job_types")
 }
 
-enum SALARY {
-  KURANG_DARI_SATU_JUTA
-  SATU_JUTA_SAMPAI_DUA_JUTA
-  DUA_JUTA_SAMPAI_TIGA_JUTA
-  TIGA_JUTA_SAMPAI_EMPAT_JUTA
-  EMPAT_JUTA_SAMPAI_LIMA_JUTA
-  LIMA_JUTA_SAMPAI_ENAM_JUTA
-  ENAM_JUTA_SAMPAI_TUJUH_JUTA
-  TUJUH_JUTA_SAMPAI_DELAPAN_JUTA
-  DELAPAN_JUTA_SAMPAI_SEMBILAN_JUTA
-  SEMBILAN_JUTA_SAMPAI_SEPULUH_JUTA
-  LEBIH_DARI_SEPULUH_JUTA
-}
-
 model Job {
   id        Int      @id @default(autoincrement()) @db.Int
-  income    SALARY
   jobTypeId Int      @db.Int
   createdAt DateTime @default(now()) @db.Timestamp(2)
   updatedAt DateTime @default(now()) @db.Timestamp(2)
@@ -311,25 +332,12 @@ enum RESIDENCESTATUS {
   MILIK_SENDIRI
   MENYEWA
   BERSAMA_ORANG_TUA
-  LAINNYA
 }
-
-model Residence {
-  id      Int             @id @default(autoincrement()) @db.Int
-  status  RESIDENCESTATUS
-  address String?         @db.VarChar(255)
-
-  familyMember FamilyMember[] @relation("FamilyMemberResidence")
-
-  @@map("residences")
-}
-
 model Nutrition {
   id                Int      @id @default(autoincrement()) @db.Int
-  height            Float    @db.Float
-  weight            Float    @db.Float
+  height            Float?    @db.Float
+  weight            Float?    @db.Float
   bmi               Float?   @db.Float
-  birthWeight       Float?   @db.Float
   familyMemberId    String   @unique @db.VarChar(255)
   createdAt         DateTime @default(now()) @db.Timestamp(2)
   updatedAt         DateTime @default(now()) @db.Timestamp(2)
@@ -344,13 +352,14 @@ model Nutrition {
 }
 
 enum NUTRITIONSTATUS {
-  KURUS
-  NORMAL
-  GEMUK
+  GIZI_BURUK_KURANG
+  GIZI_BAIK
+  OVERWEIGHT_OBESITAS
 }
 
 model NutritionStatus {
   id          Int             @id @default(autoincrement()) @db.Int
+  displayName String          @db.VarChar(255)
   status      NUTRITIONSTATUS
   information String?         @db.VarChar(255)
   createdAt   DateTime        @default(now()) @db.Timestamp(2)
@@ -400,7 +409,6 @@ model Answer {
   responseId    String   @db.VarChar(255)
   score         Int?     @default(0) @db.Int
   boolean_value Boolean?
-  text_value    String?
   option_id     Int?
   scaleValue    Int?
 
@@ -473,4 +481,52 @@ model Staff {
   institution Institution @relation( fields: [healthcare_id], references: [id], onDelete: Cascade)
 
   @@map("staffs")
+}
+
+model Partnership {
+  id           String   @id @default(uuid())
+  schoolId     Int      @db.Int
+  healthcareId Int      @db.Int
+  createdAt    DateTime @default(now()) @db.Timestamp(2)
+
+  school     Institution @relation("SchoolPartnership", fields: [schoolId], references: [id], onDelete: Cascade)
+  healthcare Institution @relation("HealthcarePartnership", fields: [healthcareId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolId, healthcareId])
+  @@map("partnerships")
+}
+
+model BmiReference {
+  id        Int @id @default(autoincrement())
+
+  ageYear   Int
+  ageMonthFrom Int
+  ageMonthTo   Int
+  gender GENDER
+
+  sdMinus3Min Float
+  sdMinus3Max Float
+
+  sdMinus2Min Float
+  sdMinus2Max Float
+
+  sdMinus1Min Float
+  sdMinus1Max Float
+
+  medianMin Float
+  medianMax Float
+
+  sdPlus1Min Float
+  sdPlus1Max Float
+
+  sdPlus2Min Float
+  sdPlus2Max Float
+
+  sdPlus3Min Float
+  sdPlus3Max Float
+
+  createdAt DateTime @default(now())
+
+  @@map("bmi_references")
+  @@unique([ageYear, ageMonthFrom, ageMonthTo, gender])
 }

@@ -7,15 +7,11 @@ export const seedJobTypes = async () => {
     const existingJobTypes = await prisma.jobType.findMany({
       where: {
         OR: [
-          { name: "Pekerja Tetap" },
-          { name: "Pekerja Tidak Tetap" },
-          { name: "Pekerja Paruh Waktu" },
-          { name: "Pekerja Freelance" },
-          { name: "Pekerja Musiman" },
-          { name: "Pekerja Kontrak" },
-          { name: "Pekerja Negeri Sipil" },
-          { name: "Pekerja BUMN" },
-          { name: "Pekerja Swasta" },
+          { name: "Tidak Bekerja" },
+          { name: "Buruh" },
+          { name: "Karyawan Swasta" },
+          { name: "ASN / BUMN" },
+          { name: "Wiraswasta" },
         ],
       },
     });
@@ -27,15 +23,11 @@ export const seedJobTypes = async () => {
 
     await prisma.jobType.createMany({
       data: [
-        { name: "Pekerja Tetap", type: "PEKERJA_TETAP" },
-        { name: "Pekerja Tidak Tetap", type: "PEKERJA_TIDAK_TETAP" },
-        { name: "Pekerja Paruh Waktu", type: "PEKERJA_PARUH_WAKTU" },
-        { name: "Pekerja Freelance", type: "PEKERJA_FREELANCE" },
-        { name: "Pekerja Musiman", type: "PEKERJA_MUSIMAN" },
-        { name: "Pekerja Kontrak", type: "PEKERJA_KONTRAK" },
-        { name: "Pekerja Negeri Sipil", type: "PEGAWAI_NEGERI_SIPIL" },
-        { name: "Pekerja BUMN", type: "PEGAWAI_BUMN" },
-        { name: "Pekerja Swasta", type: "PEGAWAI_SWASTA" },
+        { name: "Tidak Bekerja", type: "TIDAK_BEKERJA" },
+        { name: "Buruh", type: "BURUH" },
+        { name: "Karyawan Swasta", type: "KARYAWAN_SWASTA" },
+        { name: "ASN / BUMN", type: "ASN_BUMN" },
+        { name: "Wiraswasta", type: "WIRASWASTA" },
       ],
     });
     console.log("Job types seeded successfully");

@@ -81,6 +81,7 @@ export const getFamilyMemberByUser = async (req, res) => {
         id: true,
         fullName: true,
         birthDate: true,
+        age: true,
         education: true,
         gender: true,
         relation: true,
@@ -88,7 +89,6 @@ export const getFamilyMemberByUser = async (req, res) => {
         job: {
           select: {
             id: true,
-            income: true,
             jobType: {
               select: {
                 id: true,
@@ -97,11 +97,14 @@ export const getFamilyMemberByUser = async (req, res) => {
             },
           },
         },
-        residence: {
+        SocioEconomic: {
           select: {
             id: true,
-            status: true,
+            residenceStatus: true,
             address: true,
+            childrenCount: true,
+            underFiveCount: true,
+            familyIncomeLevel: true,
           },
         },
         nutrition: {
@@ -110,11 +113,11 @@ export const getFamilyMemberByUser = async (req, res) => {
             height: true,
             weight: true,
             bmi: true,
-            birthWeight: true,
             nutritionStatus: {
               select: {
                 id: true,
                 information: true,
+                displayName: true,
               },
             },
           },
@@ -167,7 +170,7 @@ export const getFamilyMemberByUser = async (req, res) => {
     return successResponse(
       res,
       { totalRows, totalPage, page, limit, familyMembers },
-      "Family Member retrieved successfully"
+      "Family Member retrieved successfully",
     );
   } catch (error) {
     return errorResponse(res, error, "Failed to retrieve family member");
@@ -205,7 +208,7 @@ export const getFamilyMember = async (req, res) => {
     return successResponse(
       res,
       { totalRows, totalPage, page, limit, familyMembers },
-      "Family Member retrieved successfully"
+      "Family Member retrieved successfully",
     );
   } catch (error) {
     return errorResponse(res, error, "Failed to retrieve family member");
@@ -213,38 +216,32 @@ export const getFamilyMember = async (req, res) => {
 };
 
 export const getParentsByFamilyMemberId = async (req, res) => {
-  const { id } = req.params;
-
   try {
-    const anak = await prisma.familyMember.findFirst({
-      where: {
-        id,
-      },
+    const { id } = req.params;
+
+    const familyMember = await prisma.familyMember.findUnique({
+      where: { id },
+      select: { familyId: true },
     });
 
-    if (!anak) {
-      return errorResponse(res, null, "Anak tidak ditemukan");
-    }
+    if (!familyMember)
+      return errorResponse(res, null, "Family member not found");
 
-    const familyId = anak.familyId;
-
-    const orangTua = await prisma.familyMember.findMany({
+    const parents = await prisma.familyMember.findMany({
       where: {
-        familyId: familyId,
-        relation: { in: ["AYAH", "IBU"] },
+        familyId: familyMember.familyId,
+        OR: [{ relation: "AYAH" }, { relation: "IBU" }],
       },
       select: {
         id: true,
         fullName: true,
         birthDate: true,
-        gender: true,
-        relation: true,
-        phone: true,
+        age: true,
         education: true,
+        phone: true,
         job: {
           select: {
             id: true,
-            income: true,
             jobType: {
               select: {
                 id: true,
@@ -253,20 +250,76 @@ export const getParentsByFamilyMemberId = async (req, res) => {
             },
           },
         },
-        residence: {
+        SocioEconomic: {
           select: {
             id: true,
-            status: true,
+            residenceStatus: true,
             address: true,
+            childrenCount: true,
+            underFiveCount: true,
+            familyIncomeLevel: true,
           },
         },
       },
     });
 
-    return successResponse(res, orangTua, "Parent data successfully retrieved");
+    return successResponse(res, parents, "Parents retrieved successfully");
   } catch (error) {
-    return errorResponse(res, error, "Failed to retrieve family member");
+    return errorResponse(res, error, "Failed to retrieve parents");
   }
+
+  // try {
+  //   const anak = await prisma.familyMember.findFirst({
+  //     where: {
+  //       id,
+  //     },
+  //   });
+
+  //   if (!anak) {
+  //     return errorResponse(res, null, "Anak tidak ditemukan");
+  //   }
+
+  //   const familyId = anak.familyId;
+
+  //   const orangTua = await prisma.familyMember.findMany({
+  //     where: {
+  //       familyId: familyId,
+  //       relation: { in: ["AYAH", "IBU"] },
+  //     },
+  //     select: {
+  //       id: true,
+  //       fullName: true,
+  //       birthDate: true,
+  //       gender: true,
+  //       relation: true,
+  //       phone: true,
+  //       education: true,
+  //       job: {
+  //         select: {
+  //           id: true,
+  //           income: true,
+  //           jobType: {
+  //             select: {
+  //               id: true,
+  //               name: true,
+  //             },
+  //           },
+  //         },
+  //       },
+  //       residence: {
+  //         select: {
+  //           id: true,
+  //           status: true,
+  //           address: true,
+  //         },
+  //       },
+  //     },
+  //   });
+
+  //   return successResponse(res, orangTua, "Parent data successfully retrieved");
+  // } catch (error) {
+  //   return errorResponse(res, error, "Failed to retrieve family member");
+  // }
 };
 
 export const createFamilyMember = async (req, res) => {
@@ -294,63 +347,29 @@ export const createFamilyMember = async (req, res) => {
       const {
         type,
         fullName,
+        age,
         birthDate,
         education,
         jobTypeId,
-        income,
         height,
         weight,
         gender,
         relation,
-        institutionId,
         phone,
-        status,
+        residenceStatus,
         address,
+        childrenCount,
+        underFiveCount,
+        familyIncomeLevel,
         nis,
         schoolYear,
         semester,
         schoolId,
-        birthWeight,
         classId,
-        sameHome,
+        sameSocioEconomic,
       } = member;
 
-      const now = new Date();
-      const validBirthDate = new Date(
-        `${birthDate}T${now.getHours().toString().padStart(2, "0")}:${now
-          .getMinutes()
-          .toString()
-          .padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}Z`
-      );
-
-      const heightInMeters = Number(height) / 100;
-      const calculateBMI = Number(weight) / (heightInMeters * heightInMeters);
-
-      let bmiCategory = "";
-      if (calculateBMI < 17) {
-        bmiCategory = "Kekurangan bb tingkat berat";
-      } else if (calculateBMI >= 17 && calculateBMI < 18.5) {
-        bmiCategory = "Kekurangan bb tingkat ringan";
-      } else if (calculateBMI >= 18.5 && calculateBMI <= 24.9) {
-        bmiCategory = "Gizi normal";
-      } else if (calculateBMI > 24.9 && calculateBMI <= 27) {
-        bmiCategory = "Kelebihan bb tingkat ringan";
-      } else {
-        bmiCategory = "Kelebihan bb tingkat berat";
-      }
-
-      const nutritionStatus = await prisma.nutritionStatus.findFirst({
-        where: {
-          information: bmiCategory,
-        },
-      });
-
-      if (!nutritionStatus) {
-        results.push({ error: "Nutrition status not found", member });
-        continue;
-      }
-
-      let job, residence, familyMember, nutrition, student, parent;
+      let job, socioEconomic, familyMember, nutrition, student, parent;
 
       const existingFamilyMember = await prisma.familyMember.findFirst({
         where: {
@@ -359,167 +378,29 @@ export const createFamilyMember = async (req, res) => {
         },
         include: {
           job: true,
-          residence: true,
         },
       });
 
       if (type === "ibu") {
-        const ops = [];
-
-        if (existingFamilyMember && existingFamilyMember.job) {
-          ops.push(
-            prisma.job.update({
-              where: { id: existingFamilyMember.job.id },
-              data: {
-                income,
-                jobTypeId,
-              },
-            })
-          );
-        } else {
-          ops.push(
-            prisma.job.create({
-              data: {
-                income,
-                jobTypeId,
-              },
-            })
-          );
-        }
-
-        if (existingFamilyMember && existingFamilyMember.residence) {
-          ops.push(
-            prisma.residence.update({
-              where: { id: existingFamilyMember.residence.id },
-              data: {
-                status,
-                address,
-              },
-            })
-          );
-        } else {
-          ops.push(
-            prisma.residence.create({
-              data: {
-                status,
-                address,
-              },
-            })
-          );
-        }
-
-        const [jobResult, residenceResult] = await prisma.$transaction(ops);
-        job = jobResult;
-        residence = residenceResult;
-
-        if (!job || !job.id || !residence || !residence.id) {
-          results.push({ error: "Job atau Residence gagal dibuat", member });
-          continue;
-        }
-
-        if (existingFamilyMember) {
-          familyMember = await prisma.familyMember.update({
-            where: { id: existingFamilyMember.id },
-            data: {
-              fullName,
-              birthDate: validBirthDate,
-              education,
-              gender,
-              relation,
-              familyId: familyByUser.id,
-              institutionId,
-              phone,
-              jobId: job.id,
-              residenceId: residence.id,
-            },
-          });
-        } else {
-          familyMember = await prisma.familyMember.create({
-            data: {
-              fullName,
-              birthDate: validBirthDate,
-              education,
-              gender,
-              relation,
-              familyId: familyByUser.id,
-              institutionId,
-              phone,
-              jobId: job.id,
-              residenceId: residence.id,
-            },
-          });
-        }
-
-        const existingNutrition = await prisma.nutrition.findFirst({
-          where: { familyMemberId: familyMember.id },
+        socioEconomic = await prisma.socioEconomic.create({
+          data: {
+            residenceStatus,
+            address,
+            childrenCount,
+            underFiveCount,
+            familyIncomeLevel,
+          },
         });
 
-        if (existingNutrition) {
-          nutrition = await prisma.nutrition.update({
-            where: { id: existingNutrition.id },
-            data: {
-              height: Number(height),
-              weight: Number(weight),
-              bmi: calculateBMI,
-              nutritionStatusId: nutritionStatus.id,
-            },
-          });
-        } else {
-          nutrition = await prisma.nutrition.create({
-            data: {
-              height: Number(height),
-              weight: Number(weight),
-              bmi: calculateBMI,
-              nutritionStatusId: nutritionStatus.id,
-              familyMemberId: familyMember.id,
-              createdBy: user.id,
-            },
-          });
-        }
-      } else if (type === "ayah") {
         if (existingFamilyMember && existingFamilyMember.job) {
           job = await prisma.job.update({
             where: { id: existingFamilyMember.job.id },
-            data: { income, jobTypeId },
+            data: { jobTypeId },
           });
         } else {
           job = await prisma.job.create({
-            data: { income, jobTypeId },
+            data: { jobTypeId },
           });
-        }
-
-        let ibuResidenceId = null;
-        if (sameHome) {
-          const ibu = await prisma.familyMember.findFirst({
-            where: {
-              familyId: familyByUser.id,
-              relation: "IBU",
-            },
-            select: { residenceId: true },
-          });
-
-          if (!ibu || !ibu.residenceId) {
-            results.push({
-              error: "Data ibu atau residence ibu tidak ditemukan",
-              member,
-            });
-            continue;
-          }
-          ibuResidenceId = ibu.residenceId;
-          residence = await prisma.residence.findUnique({
-            where: { id: ibuResidenceId },
-          });
-        } else {
-          if (existingFamilyMember && existingFamilyMember.residence) {
-            residence = await prisma.residence.update({
-              where: { id: existingFamilyMember.residence.id },
-              data: { status, address },
-            });
-          } else {
-            residence = await prisma.residence.create({
-              data: { status, address },
-            });
-          }
         }
 
         if (!job || !job.id) {
@@ -527,8 +408,83 @@ export const createFamilyMember = async (req, res) => {
           continue;
         }
 
-        if (sameHome && !ibuResidenceId) {
-          results.push({ error: "ibuResidenceId tidak ditemukan", member });
+        if (existingFamilyMember) {
+          familyMember = await prisma.familyMember.update({
+            where: { id: existingFamilyMember.id },
+            data: {
+              fullName,
+              age: age ? parseInt(age) : null,
+              education,
+              relation,
+              familyId: familyByUser.id,
+              phone,
+              jobId: job.id,
+              socioEconomicId: socioEconomic.id,
+              isCompleted: true,
+            },
+          });
+        } else {
+          familyMember = await prisma.familyMember.create({
+            data: {
+              fullName,
+              age: age ? parseInt(age) : null,
+              education,
+              relation,
+              familyId: familyByUser.id,
+              phone,
+              jobId: job.id,
+              socioEconomicId: socioEconomic.id,
+              isCompleted: true,
+            },
+          });
+        }
+      } else if (type === "ayah") {
+        let socioEconomicId;
+
+        if (sameSocioEconomic) {
+          const ibu = await prisma.familyMember.findFirst({
+            where: {
+              familyId: familyByUser.id,
+              relation: "IBU",
+            },
+            select: { socioEconomicId: true },
+          });
+
+          if (!ibu || !ibu.socioEconomicId) {
+            results.push({
+              error: "Data ibu tidak ditemukan, isi data ibu terlebih dahulu",
+              member,
+            });
+            continue;
+          }
+
+          socioEconomicId = ibu.socioEconomicId;
+        } else {
+          socioEconomic = await prisma.socioEconomic.create({
+            data: {
+              residenceStatus,
+              address,
+              childrenCount,
+              underFiveCount,
+              familyIncomeLevel,
+            },
+          });
+          socioEconomicId = socioEconomic.id;
+        }
+
+        if (existingFamilyMember && existingFamilyMember.job) {
+          job = await prisma.job.update({
+            where: { id: existingFamilyMember.job.id },
+            data: { jobTypeId },
+          });
+        } else {
+          job = await prisma.job.create({
+            data: { jobTypeId },
+          });
+        }
+
+        if (!job || !job.id) {
+          results.push({ error: "Job gagal dibuat", member });
           continue;
         }
 
@@ -537,73 +493,99 @@ export const createFamilyMember = async (req, res) => {
             where: { id: existingFamilyMember.id },
             data: {
               fullName,
-              birthDate: validBirthDate,
+              age: age ? parseInt(age) : null,
               education,
-              gender,
               relation,
               familyId: familyByUser.id,
-              institutionId,
               phone,
               jobId: job.id,
-              residenceId: sameHome ? ibuResidenceId : residence?.id,
+              socioEconomicId,
+              isCompleted: true,
             },
           });
         } else {
           familyMember = await prisma.familyMember.create({
             data: {
               fullName,
-              birthDate: validBirthDate,
+              age: age ? parseInt(age) : null,
               education,
-              gender,
               relation,
               familyId: familyByUser.id,
-              institutionId,
               phone,
               jobId: job.id,
-              residenceId: sameHome ? ibuResidenceId : residence?.id,
-            },
-          });
-        }
-
-        const existingNutrition = await prisma.nutrition.findFirst({
-          where: { familyMemberId: familyMember.id },
-        });
-
-        if (existingNutrition) {
-          nutrition = await prisma.nutrition.update({
-            where: { id: existingNutrition.id },
-            data: {
-              height: Number(height),
-              weight: Number(weight),
-              bmi: calculateBMI,
-              nutritionStatusId: nutritionStatus.id,
-            },
-          });
-        } else {
-          nutrition = await prisma.nutrition.create({
-            data: {
-              height: Number(height),
-              weight: Number(weight),
-              bmi: calculateBMI,
-              nutritionStatusId: nutritionStatus.id,
-              familyMemberId: familyMember.id,
-              createdBy: user.id,
+              socioEconomicId,
+              isCompleted: true,
             },
           });
         }
       } else if (type === "anak") {
+        const childBirthDate = new Date(birthDate);
+        const today = new Date();
+        let ageMonths =
+          (today.getFullYear() - childBirthDate.getFullYear()) * 12 +
+          (today.getMonth() - childBirthDate.getMonth());
+        if (today.getDate() < childBirthDate.getDate()) {
+          ageMonths--;
+        }
+        const ageYear = Math.floor(ageMonths / 12);
+        const ageMonthRemainder = ageMonths % 12;
+
+        const heightInMeters = Number(height) / 100;
+        const calculateBMI = Number(weight) / (heightInMeters * heightInMeters);
+
+        const bmiRef = await prisma.bmiReference.findFirst({
+          where: {
+            gender: gender,
+            ageYear: ageYear,
+            ageMonthFrom: { lte: ageMonthRemainder },
+            ageMonthTo: { gte: ageMonthRemainder },
+          },
+        });
+
+        if (!bmiRef) {
+          results.push({
+            error: "Referensi BMI tidak ditemukan untuk usia anak ini",
+            member,
+          });
+          continue;
+        }
+
+        let nutritionStatusEnum;
+        if (calculateBMI < bmiRef.sdMinus2Min) {
+          nutritionStatusEnum = "GIZI_BURUK_KURANG";
+        } else if (calculateBMI > bmiRef.sdPlus1Max) {
+          nutritionStatusEnum = "OVERWEIGHT_OBESITAS";
+        } else {
+          nutritionStatusEnum = "GIZI_BAIK";
+        }
+
+        const nutritionStatusRecord = await prisma.nutritionStatus.findFirst({
+          where: { status: nutritionStatusEnum },
+        });
+
+        if (!nutritionStatusRecord) {
+          results.push({
+            error: "Nutrition status not found",
+            member,
+          });
+          continue;
+        }
+
         parent = await prisma.familyMember.findFirst({
           where: {
             familyId: familyByUser.id,
             OR: [{ relation: "IBU" }, { relation: "AYAH" }],
           },
           select: {
-            residenceId: true,
+            socioEconomicId: true,
           },
         });
 
-        if (!parent || !parent.residenceId) {
-          results.push({ error: "Parent residence not found", member });
+        if (!parent || !parent.socioEconomicId) {
+          results.push({
+            error: "Data orang tua tidak ditemukan",
+            member,
+          });
           continue;
         }
 
@@ -612,36 +594,34 @@ export const createFamilyMember = async (req, res) => {
             where: { id: existingFamilyMember.id },
             data: {
               fullName,
-              birthDate: validBirthDate,
+              birthDate: childBirthDate,
               education,
               gender,
               relation,
               familyId: familyByUser.id,
-              institutionId,
               phone,
-              residenceId: parent.residenceId,
+              socioEconomicId: parent.socioEconomicId,
+              isCompleted: true,
             },
           });
         } else {
           familyMember = await prisma.familyMember.create({
             data: {
               fullName,
-              birthDate: validBirthDate,
+              birthDate: childBirthDate,
               education,
               gender,
               relation,
               familyId: familyByUser.id,
-              institutionId,
               phone,
-              residenceId: parent.residenceId,
+              socioEconomicId: parent.socioEconomicId,
+              isCompleted: true,
             },
           });
         }
 
         const existingStudent = await prisma.student.findUnique({
-          where: {
-            nis,
-          },
+          where: { nis },
         });
 
         if (existingStudent) {
@@ -678,9 +658,8 @@ export const createFamilyMember = async (req, res) => {
             data: {
               height: Number(height),
               weight: Number(weight),
-              birthWeight: Number(birthWeight),
               bmi: calculateBMI,
-              nutritionStatusId: nutritionStatus.id,
+              nutritionStatusId: nutritionStatusRecord.id,
             },
           });
         } else {
@@ -688,9 +667,8 @@ export const createFamilyMember = async (req, res) => {
             data: {
               height: Number(height),
               weight: Number(weight),
-              birthWeight: Number(birthWeight),
               bmi: calculateBMI,
-              nutritionStatusId: nutritionStatus.id,
+              nutritionStatusId: nutritionStatusRecord.id,
               familyMemberId: familyMember.id,
               createdBy: user.id,
             },
@@ -701,33 +679,22 @@ export const createFamilyMember = async (req, res) => {
         continue;
       }
 
-      results.push({ job, residence, familyMember, nutrition, student });
+      results.push({ job, socioEconomic, familyMember, nutrition, student });
     }
 
-    const ibu = await prisma.familyMember.findFirst({
-      where: { familyId: familyByUser.id, relation: "IBU" },
-    });
-    const ayah = await prisma.familyMember.findFirst({
-      where: { familyId: familyByUser.id, relation: "AYAH" },
-    });
-    const anak = await prisma.familyMember.findFirst({
-      where: { familyId: familyByUser.id, relation: "ANAK" },
-    });
-
-    if (ibu && ayah && anak) {
-      await prisma.familyMember.updateMany({
-        where: {
-          familyId: familyByUser.id,
-          relation: { in: ["IBU", "AYAH", "ANAK"] },
-        },
-        data: { isCompleted: true },
-      });
+    const errors = results.filter((r) => r.error);
+    if (errors.length > 0) {
+      return errorResponse(
+        res,
+        { results, errors },
+        errors[0].error,
+      );
     }
 
     return successResponse(
       res,
       results,
-      "Berhasil menambahkan anggota keluarga"
+      "Berhasil menambahkan anggota keluarga",
     );
   } catch (error) {
     return errorResponse(res, error, "Gagal menambahkan anggota keluarga");
@@ -741,7 +708,6 @@ export const updateFamilyMember = async (req, res) => {
       type,
       height,
       weight,
-      birthWeight,
       nis,
       schoolYear,
       semester,
@@ -762,7 +728,6 @@ export const updateFamilyMember = async (req, res) => {
       return errorResponse(res, null, "Family member not found");
     }
 
-    // Update familyMember hanya jika ada field lain yang dikirim
     if (Object.keys(fields).length > 0) {
       if (fields.birthDate) fields.birthDate = new Date(fields.birthDate);
       await prisma.familyMember.update({
@@ -771,11 +736,8 @@ export const updateFamilyMember = async (req, res) => {
       });
     }
 
-    // Update nutrition jika ada height/weight/birthWeight
     if (
-      (height !== undefined ||
-        weight !== undefined ||
-        birthWeight !== undefined) &&
+      (height !== undefined || weight !== undefined) &&
       familyMember.nutrition.length > 0
     ) {
       let bmi, nutritionStatusId;
@@ -783,30 +745,50 @@ export const updateFamilyMember = async (req, res) => {
         const heightInMeters = Number(height) / 100;
         bmi = Number(weight) / (heightInMeters * heightInMeters);
 
-        let bmiCategory = "";
-        if (bmi < 17) {
-          bmiCategory = "Kekurangan bb tingkat berat";
-        } else if (bmi >= 17 && bmi < 18.5) {
-          bmiCategory = "Kekurangan bb tingkat ringan";
-        } else if (bmi >= 18.5 && bmi <= 24.9) {
-          bmiCategory = "Gizi normal";
-        } else if (bmi > 24.9 && bmi <= 27) {
-          bmiCategory = "Kelebihan bb tingkat ringan";
-        } else {
-          bmiCategory = "Kelebihan bb tingkat berat";
-        }
+        const childBirthDate = familyMember.birthDate;
+        if (childBirthDate) {
+          const today = new Date();
+          let ageMonths =
+            (today.getFullYear() - childBirthDate.getFullYear()) * 12 +
+            (today.getMonth() - childBirthDate.getMonth());
+          if (today.getDate() < childBirthDate.getDate()) {
+            ageMonths--;
+          }
+          const ageYear = Math.floor(ageMonths / 12);
+          const ageMonthRemainder = ageMonths % 12;
 
-        const nutritionStatus = await prisma.nutritionStatus.findFirst({
-          where: { information: bmiCategory },
-        });
-        nutritionStatusId = nutritionStatus?.id;
+          const bmiRef = await prisma.bmiReference.findFirst({
+            where: {
+              gender: familyMember.gender,
+              ageYear: ageYear,
+              ageMonthFrom: { lte: ageMonthRemainder },
+              ageMonthTo: { gte: ageMonthRemainder },
+            },
+          });
+
+          if (bmiRef) {
+            let nutritionStatusEnum;
+            if (bmi < bmiRef.sdMinus2Min) {
+              nutritionStatusEnum = "GIZI_BURUK_KURANG";
+            } else if (bmi > bmiRef.sdPlus1Max) {
+              nutritionStatusEnum = "OVERWEIGHT_OBESITAS";
+            } else {
+              nutritionStatusEnum = "GIZI_BAIK";
+            }
+
+            const nutritionStatusRecord =
+              await prisma.nutritionStatus.findFirst({
+                where: { status: nutritionStatusEnum },
+              });
+            nutritionStatusId = nutritionStatusRecord?.id;
+          }
+        }
       }
 
       const nutritionUpdateData = {
         ...(height !== undefined && { height: Number(height) }),
         ...(weight !== undefined && { weight: Number(weight) }),
         ...(bmi !== undefined && { bmi }),
-        ...(birthWeight !== undefined && { birthWeight: Number(birthWeight) }),
         ...(nutritionStatusId && { nutritionStatusId }),
       };
 
@@ -816,7 +798,6 @@ export const updateFamilyMember = async (req, res) => {
       });
     }
 
-    // Jika type anak, update/create student
     if (type === "anak") {
       const studentUpdateData = {
         ...(nis !== undefined && { nis }),
@@ -843,6 +824,11 @@ export const updateFamilyMember = async (req, res) => {
         });
       }
     }
+
+    await prisma.familyMember.update({
+      where: { id },
+      data: { isCompleted: true },
+    });
 
     return successResponse(res, null, "Berhasil mengupdate anggota keluarga");
   } catch (error) {

@@ -4,13 +4,16 @@ import {
   getClasses,
   deleteClasses,
   updateClasses,
+  getClassesByInstitution
 } from "../controllers/ClassesController.js";
+import { verifyToken } from "../middelware/verifyToken.js";
 
 const router = Router();
 
+router.get("/classes/institution/:institutionId", getClassesByInstitution);
 router.get("/classes", getClasses);
-router.post("/classes", createClasses);
-router.put("/classes/:id", updateClasses);
-router.delete("/classes/:id", deleteClasses);
+router.post("/classes", verifyToken, createClasses);
+router.put("/classes/:id", verifyToken, updateClasses);
+router.delete("/classes/:id", verifyToken, deleteClasses);
 
 export default router;

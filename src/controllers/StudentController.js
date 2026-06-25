@@ -37,13 +37,12 @@ export const getStudents = async (req, res) => {
             id: true,
             height: true,
             weight: true,
-            birthWeight: true,
             bmi: true,
             nutritionStatus: {
               select: {
                 id: true,
                 information: true,
-                status: true,
+                displayName: true,
               },
             },
           },
@@ -102,7 +101,7 @@ export const getStudents = async (req, res) => {
     return successResponse(
       res,
       { totalRows, totalPage, page, limit, students },
-      "Students retrieved successfully"
+      "Students retrieved successfully",
     );
   } catch (error) {
     return errorResponse(res, error, "Failed to retrieve students");
@@ -122,7 +121,7 @@ export const getStudentByUser = async (req, res) => {
       return errorResponse(
         res,
         404,
-        "User not found or not associated with an institution"
+        "User not found or not associated with an institution",
       );
     }
 
@@ -138,8 +137,6 @@ export const getStudentByUser = async (req, res) => {
 
     const totalRows = await prisma.familyMember.count({
       where: {
-        relation: "ANAK",
-        education: "SD",
         fullName: {
           contains: search,
         },
@@ -159,8 +156,6 @@ export const getStudentByUser = async (req, res) => {
     const totalPage = Math.ceil(totalRows / limit);
     const students = await prisma.familyMember.findMany({
       where: {
-        relation: "ANAK",
-        education: "SD",
         fullName: {
           contains: search,
         },
@@ -183,13 +178,12 @@ export const getStudentByUser = async (req, res) => {
             id: true,
             height: true,
             weight: true,
-            birthWeight: true,
             bmi: true,
             nutritionStatus: {
               select: {
                 id: true,
                 information: true,
-                status: true,
+                displayName: true,
               },
             },
           },
@@ -248,7 +242,7 @@ export const getStudentByUser = async (req, res) => {
     return successResponse(
       res,
       { totalRows, totalPage, page, limit, students },
-      "Students retrieved successfully"
+      "Students retrieved successfully",
     );
   } catch (error) {
     return errorResponse(res, error, "Failed to retrieve students");

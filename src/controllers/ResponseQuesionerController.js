@@ -14,9 +14,7 @@ export const getResponseQuesioner = async (req, res) => {
     const offset = limit * page;
 
     const family = await prisma.family.findFirst({
-      where: {
-        userId: user.id,
-      },
+      where: { userId: user.id },
     });
 
     if (!family) {
@@ -26,14 +24,7 @@ export const getResponseQuesioner = async (req, res) => {
     const familyMember = await prisma.familyMember.findFirst({
       where: {
         familyId: family.id,
-        OR: [
-          {
-            relation: "IBU",
-          },
-          {
-            relation: "AYAH",
-          },
-        ],
+        OR: [{ relation: "IBU" }, { relation: "AYAH" }],
       },
     });
 
@@ -45,9 +36,6 @@ export const getResponseQuesioner = async (req, res) => {
       where: {
         familyMemberId: familyMember.id,
         quisionerId: id,
-      },
-      include: {
-        answers: true,
       },
     });
 
@@ -62,12 +50,19 @@ export const getResponseQuesioner = async (req, res) => {
       });
     }
 
+    const totalRows = await prisma.question.count({
+      where: {
+        quesioner_id: id,
+        title: { contains: search },
+      },
+    });
+
+    const totalPage = Math.ceil(totalRows / limit);
+
     const questions = await prisma.question.findMany({
       where: {
         quesioner_id: id,
-        title: {
-          contains: search,
-        },
+        title: { contains: search },
       },
       select: {
         id: true,
@@ -75,51 +70,26 @@ export const getResponseQuesioner = async (req, res) => {
         title: true,
         type: true,
         options: {
-          select: {
-            id: true,
-            title: true,
-            score: true,
-          },
-        },
-      },
-    });
-
-    const questionIds = questions.map((q) => q.id);
-
-    const totalRows = await prisma.answer.count({
-      where: {
-        responseId: response.id,
-        questionId: {
-          in: questionIds,
-        },
-      },
-    });
-
-    const totalPage = Math.ceil(totalRows / limit);
-    const answers = await prisma.answer.findMany({
-      where: {
-        responseId: response.id,
-        questionId: {
-          in: questionIds,
+          select: { id: true, title: true, score: true },
         },
       },
       skip: offset,
       take: limit,
-      orderBy: {
-        id: "asc",
+    });
+
+    const questionIds = questions.map((q) => q.id);
+
+    const answers = await prisma.answer.findMany({
+      where: {
+        responseId: response.id,
+        questionId: { in: questionIds },
       },
+      orderBy: { id: "asc" },
     });
 
     return successResponse(
       res,
-      {
-        totalRows,
-        totalPage,
-        page,
-        limit,
-        questions,
-        answers,
-      },
+      { totalRows, totalPage, page, limit, questions, answers },
       "Berhasil mendapatkan data"
     );
   } catch (error) {
@@ -184,7 +154,6 @@ export const createResponseQuesioner = async (req, res) => {
       responseId: responseRecord.id,
       option_id: Number(item.option_id),
       score: Number(item.score),
-      text_value: item.text_value ? String(item.text_value) : null,
       boolean_value: item.boolean_value ? Boolean(item.boolean_value) : null,
       scaleValue: item.scaleValue ? Number(item.scaleValue) : null,
     }));
@@ -211,13 +180,6 @@ export const createResponseQuesioner = async (req, res) => {
         typeof item.scaleValue !== "number"
       ) {
         return errorResponse(res, 400, "Invalid scale value format");
-      }
-      if (
-        item.text_value !== undefined &&
-        item.text_value !== null &&
-        typeof item.text_value !== "string"
-      ) {
-        return errorResponse(res, 400, "Invalid text value format");
       }
     }
 
@@ -316,7 +278,7 @@ export const checkAnsweredQuesioner = async (req, res) => {
 export const updateResponseQuesioner = async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const { option_id, text_value, boolean_value, scaleValue, score } =
+    const { option_id, boolean_value, scaleValue, score } =
       req.body;
 
     const updateResponse = await prisma.answer.update({
@@ -325,7 +287,6 @@ export const updateResponseQuesioner = async (req, res) => {
       },
       data: {
         option_id: Number(option_id),
-        text_value,
         boolean_value:
           boolean_value === undefined || boolean_value === null
             ? null
@@ -499,7 +460,6 @@ export const createResponseQuesionerInstitution = async (req, res) => {
       responseId: responseRecord.id,
       option_id: item.option_id !== undefined ? Number(item.option_id) : null,
       score: Number(item.score),
-      text_value: item.text_value ? String(item.text_value) : null,
       boolean_value:
         item.boolean_value !== undefined ? Boolean(item.boolean_value) : null,
       scaleValue:
@@ -527,13 +487,6 @@ export const createResponseQuesionerInstitution = async (req, res) => {
         typeof item.scaleValue !== "number"
       ) {
         return errorResponse(res, 400, "Invalid scale value format");
-      }
-      if (
-        item.text_value !== undefined &&
-        item.text_value !== null &&
-        typeof item.text_value !== "string"
-      ) {
-        return errorResponse(res, 400, "Invalid text value format");
       }
     }
 

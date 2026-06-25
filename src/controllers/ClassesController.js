@@ -3,6 +3,21 @@ import { errorResponse, successResponse } from "../helpers/ResponseHelper.js";
 
 const prisma = new PrismaClient();
 
+const getUserInstitution = async (userId) => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      institution: {
+        select: {
+          id: true,
+        }
+      }
+    }
+  });
+  if (!user?.institution) throw new Error("User tidak terdaftar di institusi manapun");
+  return user.institution.id;
+};
+
 export const getClasses = async (req, res) => {
   const page = parseInt(req.query.page) || 0;
   const limit = parseInt(req.query.limit) || 10;
@@ -28,6 +43,7 @@ export const getClasses = async (req, res) => {
       select: {
         id: true,
         name: true,
+        school_id: true,
         teacher: {
           select: {
             id: true,
@@ -55,16 +71,18 @@ export const createClasses = async (req, res) => {
   const { classes } = req.body;
 
   try {
+    const school_id = await getUserInstitution(req.user.id);
+
     if (Array.isArray(classes)) {
       const createdClasses = [];
       for (const cls of classes) {
         const existingClass = await prisma.class.findUnique({
-          where: { name: cls.name },
+          where: { name: cls.name, school_id },
         });
 
         if (!existingClass) {
           const newClass = await prisma.class.create({
-            data: { name: cls.name },
+            data: { name: cls.name, school_id },
           });
           createdClasses.push(newClass);
         }
@@ -73,7 +91,7 @@ export const createClasses = async (req, res) => {
       return successResponse(res, createdClasses, "Berhasil membuat kelas");
     } else {
       const existingClass = await prisma.class.findUnique({
-        where: { name: classes.name },
+        where: { name: classes.name, school_id },
       });
 
       if (existingClass) {
@@ -85,7 +103,7 @@ export const createClasses = async (req, res) => {
       }
 
       const newClass = await prisma.class.create({
-        data: { name: classes.name },
+        data: { name: classes.name, school_id },
       });
 
       return successResponse(res, newClass, "Berhasil membuat kelas");
@@ -140,6 +158,8 @@ export const deleteClasses = async (req, res) => {
   const { id } = req.params;
 
   try {
+    const school_id = await getUserInstitution(req.user.id);
+
     const existingClass = await prisma.class.findFirst({
       where: {
         id: parseInt(id),
@@ -148,6 +168,10 @@ export const deleteClasses = async (req, res) => {
 
     if (!existingClass) {
       return errorResponse(res, 404, "Kelas tidak ditemukan");
+    }
+
+    if (existingClass.school_id !== school_id) {
+      return errorResponse(res, 403, "Kelas bukan milik sekolah anda");
     }
 
     if (existingClass.teacher_id) {
@@ -171,3 +195,25 @@ export const deleteClasses = async (req, res) => {
     return errorResponse(res, error, "Error saat menghapus teacher");
   }
 };
+
+export const getClassesByInstitution = async (req, res) => {
+  const { institutionId } = req.params;
+
+  try {
+    const classes = await prisma.class.findMany({
+      where: {
+          school_id: Number(institutionId),
+       },
+      select: {
+        id: true,
+        name: true,
+      },
+      orderBy: {
+        id: "asc",
+      }
+    });
+    return successResponse(res, classes, "Kelas berhasil diambil berdasarkan institusi");
+  } catch (error) {
+    return errorResponse(res, error, "Error saat mengambil kelas berdasarkan institusi");
+  }
+}
