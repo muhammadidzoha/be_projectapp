@@ -103,7 +103,30 @@ export const getInstitutions = async (req, res) => {
     return successResponse(
       res,
       { totalRows, totalPage, page, limit, institutions },
-      "Institutions retrieved successfully"
+      "Institutions retrieved successfully",
+    );
+  } catch (error) {
+    return errorResponse(res, error, "Internal server error");
+  }
+};
+
+export const getInstitutionByUser = async (req, res) => {
+  try {
+    const user = req.user;
+    const institution = await prisma.institution.findFirst({
+      where: {
+        user_id: user.id,
+      },
+    });
+
+    if (!institution) {
+      return errorResponse(res, 404, "Institution not found");
+    }
+
+    return successResponse(
+      res,
+      institution,
+      "Institution retrieved successfully",
     );
   } catch (error) {
     return errorResponse(res, error, "Internal server error");
@@ -124,7 +147,46 @@ export const getInstitutionType = async (req, res) => {
     return successResponse(
       res,
       institutionTypes,
-      "Institution types retrieved successfully"
+      "Institution types retrieved successfully",
+    );
+  } catch (error) {
+    return errorResponse(res, error, "Internal server error");
+  }
+};
+
+export const getHealthCares = async (req, res) => {
+  try {
+    const search = req.query.search || "";
+
+    const healthcares = await prisma.institution.findMany({
+      where: {
+        institution_type: { name: "HealthCare" },
+        ...(search
+          ? {
+              OR: [
+                { name: { contains: search } },
+                { address: { contains: search } },
+                { phone: { contains: search } },
+              ],
+            }
+          : {}),
+      },
+      select: {
+        id: true,
+        name: true,
+        address: true,
+        phone: true,
+        email: true,
+        city: { select: { id: true, name: true } },
+        province: { select: { id: true, name: true } },
+      },
+      orderBy: { name: "asc" },
+    });
+
+    return successResponse(
+      res,
+      healthcares,
+      "Healthcares retrieved successfully",
     );
   } catch (error) {
     return errorResponse(res, error, "Internal server error");

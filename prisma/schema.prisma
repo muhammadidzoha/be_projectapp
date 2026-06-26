@@ -25,8 +25,15 @@ model User {
   created_at    DateTime @default(now()) @db.Timestamp(2)
   updated_at    DateTime @default(now()) @db.Timestamp(2)
 
-  role        Role         @relation("UserRoles", fields: [role_id], references: [id])
-  institution Institution? @relation("UserInstitution")
+  role           Role             @relation("UserRoles", fields: [role_id], references: [id])
+  institution    Institution?     @relation("UserInstitution")
+  teacher        Teacher?         @relation("UserTeacher")
+  family         Family?          @relation("UserFamily")
+  nutrition      Nutrition[]      @relation("UserNutrition")
+  recommendation Recommendation[] @relation("UserSubmittedRecommendations")
+  interventions Intervention[]
+  staff Staff?
+  notifications Notification[]
 
   @@map("users")
 }
@@ -57,8 +64,16 @@ model Institution {
 
   city             City?           @relation("CityInstitution", fields: [city_id], references: [id])
   province         Province?       @relation("ProvinceInstitution", fields: [province_id], references: [id])
-  user             User?           @relation("UserInstitution", fields: [user_id], references: [id])
+  user             User?           @relation("UserInstitution", fields: [user_id], references: [id], onDelete: Cascade)
   institution_type InstitutionType @relation("InstitutionType", fields: [type], references: [id])
+  teachers         Teacher[]       @relation("InstitutionTeacher")
+  familyMember     FamilyMember[]  @relation("FamilyMemberInstitution")
+  student          Student[]       @relation("StudentInstitution")
+  Response         Response[]      @relation("InstitutionResponse")
+  classes          Class[]         @relation("ClassInstitution")
+  staffs Staff[]
+  schoolPartnerships     Partnership[] @relation("SchoolPartnership")
+  healthcarePartnerships Partnership[] @relation("HealthcarePartnership")
 
   @@map("institutions")
 }
@@ -108,6 +123,7 @@ model Quesioner {
   updated_at  DateTime @default(now()) @db.Timestamp(2)
 
   questions Question[] @relation("QuesionerQuestions")
+  Response  Response[] @relation("QuesionerResponse")
 
   @@map("quesioners")
 }
@@ -118,6 +134,7 @@ model Question {
   title        String       @db.Text
   type         QuestionType
   is_required  Boolean      @default(true)
+  is_negative  Boolean      @default(false)
   created_at   DateTime     @default(now()) @db.Timestamp(2)
   updated_at   DateTime     @default(now()) @db.Timestamp(2)
 
@@ -128,10 +145,8 @@ model Question {
 }
 
 enum QuestionType {
-  MULTIPLE_CHOICE
   BOOLEAN
   SCALE
-  TEXT
 }
 
 model Option {
@@ -148,3 +163,387 @@ model Option {
 }
 
 //** all attributes for the question case end
+
+model Teacher {
+  id         String   @id @default(uuid())
+  fullName   String   @db.VarChar(255)
+  role       String?  @db.VarChar(255)
+  address    String   @db.VarChar(255)
+  phone      String   @db.VarChar(255)
+  user_id    String?  @unique @db.VarChar(255)
+  school_id  Int      @db.Int
+  created_at DateTime @default(now()) @db.Timestamp(2)
+  updated_at DateTime @default(now()) @db.Timestamp(2)
+
+  user        User?       @relation("UserTeacher", fields: [user_id], references: [id], onDelete: Cascade)
+  institution Institution @relation("InstitutionTeacher", fields: [school_id], references: [id], onDelete: Cascade)
+  classes     Class[]     @relation("TeacherClass")
+
+  @@map("teachers")
+}
+
+model Class {
+  id         Int      @id @default(autoincrement())
+  name       String   @unique @db.VarChar(255)
+  created_at DateTime @default(now()) @db.Timestamp(2)
+  updated_at DateTime @default(now()) @db.Timestamp(2)
+  teacher_id String?  @db.VarChar(255)
+  school_id Int      @db.Int
+
+  teacher  Teacher?  @relation("TeacherClass", fields: [teacher_id], references: [id], onDelete: SetNull)
+  students Student[] @relation("ClassStudent")
+  institution Institution @relation("ClassInstitution", fields: [school_id], references: [id], onDelete: Cascade)
+
+  @@map("classes")
+}
+
+//** all attributes for the family case start
+
+model Family {
+  id         String   @id @default(uuid())
+  created_at DateTime @default(now()) @db.Timestamp(2)
+  updated_at DateTime @default(now()) @db.Timestamp(2)
+  userId     String   @unique @db.VarChar(255)
+
+  user         User           @relation("UserFamily", fields: [userId], references: [id], onDelete: Cascade)
+  familyMember FamilyMember[] @relation("FamilyMemberFamily")
+
+  @@map("families")
+}
+
+enum GENDER {
+  L
+  P
+}
+
+enum EDUCATION {
+  TIDAK_SEKOLAH
+  SD
+  SMP
+  SMA
+  D1
+  D2
+  D3
+  S1
+  S2
+  S3
+}
+
+enum RELATION {
+  AYAH
+  IBU
+  ANAK
+  LAINNYA
+}
+
+model FamilyMember {
+  id            String    @id @default(uuid())
+  fullName      String    @db.VarChar(255)
+  birthDate     DateTime?  @db.Date
+  age           Int?       @db.Int
+  education     EDUCATION
+  jobId         Int?      @db.Int
+  gender        GENDER?
+  relation      RELATION
+  familyId      String    @db.VarChar(255)
+  institutionId Int?      @db.Int
+  phone         String?   @db.VarChar(255)
+  isCompleted   Boolean   @default(false)
+  socioEconomicId Int     @db.Int
+  createdAt     DateTime  @default(now()) @db.Timestamp(2)
+  updatedAt     DateTime  @default(now()) @db.Timestamp(2)
+
+  family      Family       @relation("FamilyMemberFamily", fields: [familyId], references: [id], onDelete: Cascade)
+  job         Job?         @relation("FamilyMemberJob", fields: [jobId], references: [id], onDelete: SetNull)
+  nutrition   Nutrition[]  @relation("FamilyMemberNutrition")
+  institution Institution? @relation("FamilyMemberInstitution", fields: [institutionId], references: [id], onDelete: SetNull)
+  student     Student?     @relation("StudentFamilyMember")
+  Response    Response[]   @relation("FamilyMemberResponse")
+  SocioEconomic SocioEconomic @relation(fields: [socioEconomicId], references: [id], onDelete: Cascade)
+
+  @@map("family_members")
+}
+
+enum CHILDRENCOUNT {
+  SATU
+  DUA_SAMPAI_TIGA
+  EMPAT_ATAU_LEBIH
+}
+
+enum FAMILYINCOMELEVEL {
+  KURANG_DARI_LIMA_JUTA
+  LIMA_JUTA_SAMPAI_SEPULUH_JUTA
+  LEBIH_DARI_SEPULUH_JUTA
+}
+
+enum UNDERFIVECOUNT {
+  TIDAK_ADA
+  SATU
+  DUA_SAMPAI_TIGA
+  EMPAT_ATAU_LEBIH
+}
+
+model SocioEconomic {
+  id        Int      @id @default(autoincrement()) @db.Int
+  residenceStatus RESIDENCESTATUS
+  address String?         @db.VarChar(255)
+  childrenCount CHILDRENCOUNT
+  underFiveCount UNDERFIVECOUNT
+  familyIncomeLevel FAMILYINCOMELEVEL
+  createdAt DateTime @default(now()) @db.Timestamp(2)
+  updatedAt DateTime @default(now()) @db.Timestamp(2)
+
+  familyMembers FamilyMember[]
+
+  @@map("socio_economic")
+}
+
+enum JOBTYPE {
+  TIDAK_BEKERJA
+  BURUH
+  KARYAWAN_SWASTA
+  ASN_BUMN
+  WIRASWASTA
+}
+
+model JobType {
+  id        Int      @id @default(autoincrement()) @db.Int
+  name      String?  @db.VarChar(255)
+  type      JOBTYPE
+  createdAt DateTime @default(now()) @db.Timestamp(2)
+  updatedAt DateTime @default(now()) @db.Timestamp(2)
+  job       Job[]    @relation("JobTypeJob")
+
+  @@map("job_types")
+}
+
+model Job {
+  id        Int      @id @default(autoincrement()) @db.Int
+  jobTypeId Int      @db.Int
+  createdAt DateTime @default(now()) @db.Timestamp(2)
+  updatedAt DateTime @default(now()) @db.Timestamp(2)
+
+  jobType      JobType        @relation("JobTypeJob", fields: [jobTypeId], references: [id], onDelete: Cascade)
+  familyMember FamilyMember[] @relation("FamilyMemberJob")
+
+  @@map("jobs")
+}
+
+enum RESIDENCESTATUS {
+  MILIK_SENDIRI
+  MENYEWA
+  BERSAMA_ORANG_TUA
+}
+model Nutrition {
+  id                Int      @id @default(autoincrement()) @db.Int
+  height            Float?    @db.Float
+  weight            Float?    @db.Float
+  bmi               Float?   @db.Float
+  familyMemberId    String   @unique @db.VarChar(255)
+  createdAt         DateTime @default(now()) @db.Timestamp(2)
+  updatedAt         DateTime @default(now()) @db.Timestamp(2)
+  createdBy         String   @db.VarChar(255)
+  nutritionStatusId Int?     @db.Int
+
+  nutritionStatus NutritionStatus? @relation("NutritionStatus", fields: [nutritionStatusId], references: [id], onDelete: SetNull)
+  user            User             @relation("UserNutrition", fields: [createdBy], references: [id], onDelete: Cascade)
+  familyMember    FamilyMember     @relation("FamilyMemberNutrition", fields: [familyMemberId], references: [id], onDelete: Cascade)
+
+  @@map("nutritions")
+}
+
+enum NUTRITIONSTATUS {
+  GIZI_BURUK_KURANG
+  GIZI_BAIK
+  OVERWEIGHT_OBESITAS
+}
+
+model NutritionStatus {
+  id          Int             @id @default(autoincrement()) @db.Int
+  displayName String          @db.VarChar(255)
+  status      NUTRITIONSTATUS
+  information String?         @db.VarChar(255)
+  createdAt   DateTime        @default(now()) @db.Timestamp(2)
+  updatedAt   DateTime        @default(now()) @db.Timestamp(2)
+
+  nutrition Nutrition[] @relation("NutritionStatus")
+
+  @@map("nutrition_status")
+}
+
+model Student {
+  id             String @id @default(uuid())
+  schoolId       Int    @db.Int
+  familyMemberId String @unique @db.VarChar(255)
+  nis            String @unique @db.VarChar(255)
+  schoolYear     String @db.VarChar(255)
+  semester       String @db.VarChar(255)
+  classId        Int    @db.Int
+
+  institution    Institution      @relation("StudentInstitution", fields: [schoolId], references: [id], onDelete: Cascade)
+  familyMember   FamilyMember     @relation("StudentFamilyMember", fields: [familyMemberId], references: [id], onDelete: Cascade)
+  class          Class?           @relation("ClassStudent", fields: [classId], references: [id], onDelete: Cascade)
+  recommendation Recommendation[] @relation("FamilyMemberRecommendation")
+
+  @@map("students")
+}
+
+model Response {
+  id             String   @id @default(uuid())
+  quisionerId    Int      @db.Int
+  created_at     DateTime @default(now()) @db.Timestamp(2)
+  totalScore     Int?     @default(0) @db.Int
+  familyMemberId String?  @db.VarChar(255)
+  institutionId  Int?     @db.Int
+
+  quesioner    Quesioner     @relation("QuesionerResponse", fields: [quisionerId], references: [id], onDelete: Cascade)
+  answers      Answer[]      @relation("ResponseAnswers")
+  familyMember FamilyMember? @relation("FamilyMemberResponse", fields: [familyMemberId], references: [id], onDelete: Cascade)
+  Institution  Institution?  @relation("InstitutionResponse", fields: [institutionId], references: [id], onDelete: SetNull)
+
+  @@map("responses")
+}
+
+model Answer {
+  id            Int      @id @default(autoincrement()) @db.Int
+  questionId    Int      @db.Int
+  responseId    String   @db.VarChar(255)
+  score         Int?     @default(0) @db.Int
+  boolean_value Boolean?
+  option_id     Int?
+  scaleValue    Int?
+
+  response Response @relation("ResponseAnswers", fields: [responseId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, responseId])
+  @@map("answers")
+}
+
+//** all attributes for the family case end
+
+enum RecommendationStatus {
+  PENDING
+  PROCESSED
+  COMPLETED
+}
+
+model Recommendation {
+  id            String               @id @default(uuid())
+  studentId     String
+  submittedById String
+  healthcareInstitutionId Int?                @db.Int
+  status        RecommendationStatus @default(PENDING)
+  pdfUrl        String?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @default(now())
+
+  student      Student        @relation("FamilyMemberRecommendation", fields: [studentId], references: [id], onDelete: Cascade)
+  submittedBy  User           @relation("UserSubmittedRecommendations", fields: [submittedById], references: [id])
+  Intervention Intervention[] @relation("RecommendationIntervention")
+
+  @@map("recommendations")
+}
+
+enum InterventionFor {
+  SCHOOL
+  PARENT
+}
+
+model Intervention {
+  id               String          @id @default(uuid())
+  recommendationId String
+  forType          InterventionFor
+  options          Json
+  notes            String?
+  createdAt        DateTime        @default(now())
+  user_id String @default(uuid())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+
+  recommendation Recommendation @relation("RecommendationIntervention", fields: [recommendationId], references: [id], onDelete: Cascade)
+
+  @@map("interventions")
+}
+
+
+model Staff {
+  id         String   @id @default(uuid())
+  fullName   String   @db.VarChar(255)
+  role       String?  @db.VarChar(255)
+  address    String   @db.VarChar(255)
+  phone      String   @db.VarChar(255)
+  user_id    String?  @unique @db.VarChar(255)
+  healthcare_id  Int      @db.Int
+  created_at DateTime @default(now()) @db.Timestamp(2)
+  updated_at DateTime @default(now()) @db.Timestamp(2)
+
+  user User? @relation(fields: [user_id], references: [id])
+
+  institution Institution @relation( fields: [healthcare_id], references: [id], onDelete: Cascade)
+
+  @@map("staffs")
+}
+
+model Partnership {
+  id           String   @id @default(uuid())
+  schoolId     Int      @db.Int
+  healthcareId Int      @db.Int
+  createdAt    DateTime @default(now()) @db.Timestamp(2)
+
+  school     Institution @relation("SchoolPartnership", fields: [schoolId], references: [id], onDelete: Cascade)
+  healthcare Institution @relation("HealthcarePartnership", fields: [healthcareId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolId, healthcareId])
+  @@map("partnerships")
+}
+
+model BmiReference {
+  id        Int @id @default(autoincrement())
+
+  ageYear   Int
+  ageMonthFrom Int
+  ageMonthTo   Int
+  gender GENDER
+
+  sdMinus3Min Float
+  sdMinus3Max Float
+
+  sdMinus2Min Float
+  sdMinus2Max Float
+
+  sdMinus1Min Float
+  sdMinus1Max Float
+
+  medianMin Float
+  medianMax Float
+
+  sdPlus1Min Float
+  sdPlus1Max Float
+
+  sdPlus2Min Float
+  sdPlus2Max Float
+
+  sdPlus3Min Float
+  sdPlus3Max Float
+
+  createdAt DateTime @default(now())
+
+  @@map("bmi_references")
+  @@unique([ageYear, ageMonthFrom, ageMonthTo, gender])
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  userId      String
+  title       String
+  message     String
+  isRead      Boolean  @default(false)
+  type        String
+  referenceId String?
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}

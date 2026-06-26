@@ -21,14 +21,26 @@ export const registerParent = async (req, res) => {
       return errorResponse(res, null, "Username atau email sudah digunakan");
     }
 
-    const newParent = await prisma.user.create({
-      data: {
-        username,
-        email,
-        password: hashPassword,
-        role_id: role_id,
-      },
-    });
+    const [newParent] = await prisma.$transaction([
+      prisma.user.create({
+        data: {
+          username,
+          email,
+          password: hashPassword,
+          role_id: role_id,
+        },
+      }),
+      prisma.family.create({
+        data: {
+          user: {
+            connect: {
+              username: username,
+            },
+          },
+        },
+      }),
+    ]);
+
     return successResponse(res, newParent, "Berhasil membuat akun");
   } catch (error) {
     return errorResponse(res, error, "Error saat membuat akun");
@@ -68,7 +80,7 @@ export const registerInstitution = async (req, res) => {
           { name: institutionName },
           { email: institutionEmail },
           { phone: institutionPhone },
-          { address: institutionAddress },
+          // { address: institutionAddress },
         ],
       },
     });
@@ -164,7 +176,7 @@ export const login = async (req, res) => {
       { id, username, email, role: roleName },
       process.env.APP_ACCESS_TOKEN_SECRET,
       {
-        expiresIn: "20s",
+        expiresIn: process.env?.NODE_ENV === "production" ? "20s" : 3600 * 3,
       }
     );
     const refreshToken = jwt.sign(
