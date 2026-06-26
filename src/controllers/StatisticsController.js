@@ -524,3 +524,82 @@ export const getSchoolDashboardSummary = async (req, res) => {
     return errorResponse(res, error, "Failed to get school dashboard summary");
   }
 };
+
+export const getHealthcareDashboardSummary = async (req, res) => {
+  try {
+    const user = req.user;
+
+    const institution = await prisma.institution.findFirst({
+      where: { user_id: user.id },
+    });
+
+    if (!institution) return errorResponse(res, null, "Institution not found");
+
+    const institutionId = institution.id;
+
+    const [pending, processed, completed] = await Promise.all([
+      prisma.recommendation.count({
+        where: { healthcareInstitutionId: institutionId, status: "PENDING" },
+      }),
+      prisma.recommendation.count({
+        where: { healthcareInstitutionId: institutionId, status: "PROCESSED" },
+      }),
+      prisma.recommendation.count({
+        where: { healthcareInstitutionId: institutionId, status: "COMPLETED" },
+      }),
+    ]);
+
+    const totalPartnerSchools = await prisma.partnership.count({
+      where: { healthcareId: institutionId },
+    });
+
+    const recentRecs = await prisma.recommendation.findMany({
+      where: { healthcareInstitutionId: institutionId, status: "PENDING" },
+      select: {
+        id: true,
+        createdAt: true,
+        student: {
+          select: {
+            nis: true,
+            familyMember: {
+              select: { fullName: true },
+            },
+            institution: {
+              select: { name: true },
+            },
+            class: {
+              select: { name: true },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    });
+
+    const recByStatus = [
+      { status: "PENDING", total: pending },
+      { status: "PROCESSED", total: processed },
+      { status: "COMPLETED", total: completed },
+    ];
+
+    return successResponse(
+      res,
+      {
+        totalPending: pending,
+        totalProcessed: processed,
+        totalCompleted: completed,
+        totalPartnerSchools,
+        recentRecommendations: recentRecs,
+        recommendationsByStatus: recByStatus,
+      },
+      "Healthcare dashboard summary retrieved successfully",
+    );
+  } catch (error) {
+    return errorResponse(
+      res,
+      error,
+      "Failed to get healthcare dashboard summary",
+    );
+  }
+};

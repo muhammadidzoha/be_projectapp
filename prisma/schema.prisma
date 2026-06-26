@@ -33,6 +33,7 @@ model User {
   recommendation Recommendation[] @relation("UserSubmittedRecommendations")
   interventions Intervention[]
   staff Staff?
+  notifications Notification[]
 
   @@map("users")
 }
@@ -430,6 +431,7 @@ model Recommendation {
   id            String               @id @default(uuid())
   studentId     String
   submittedById String
+  healthcareInstitutionId Int?                @db.Int
   status        RecommendationStatus @default(PENDING)
   pdfUrl        String?
   createdAt     DateTime             @default(now())
@@ -529,4 +531,19 @@ model BmiReference {
 
   @@map("bmi_references")
   @@unique([ageYear, ageMonthFrom, ageMonthTo, gender])
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  userId      String
+  title       String
+  message     String
+  isRead      Boolean  @default(false)
+  type        String
+  referenceId String?
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
 }

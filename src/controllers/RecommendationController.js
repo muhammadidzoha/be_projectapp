@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { errorResponse, successResponse } from "../helpers/ResponseHelper.js";
+import { createNotification } from "./NotificationController.js";
 
 const prisma = new PrismaClient();
 
@@ -9,9 +10,31 @@ export const getRecomendations = async (req, res) => {
   const offset = limit * page;
 
   try {
-    const totalRows = await prisma.recommendation.count();
+    let whereClause = {};
+    if (req.user?.role === "healthcare") {
+      const institution = await prisma.institution.findFirst({
+        where: { user_id: req.user.id },
+      });
+      if (institution) {
+        whereClause.healthcareInstitutionId = institution.id;
+      }
+    } else if (req.user?.role === "school") {
+      const institution = await prisma.institution.findFirst({
+        where: { user_id: req.user.id },
+      });
+      if (institution) {
+        whereClause.submittedBy = {
+          institution: { id: institution.id },
+        };
+      }
+    }
+
+    const totalRows = await prisma.recommendation.count({
+      where: whereClause,
+    });
 
     const recomend = await prisma.recommendation.findMany({
+      where: whereClause,
       select: {
         id: true,
         status: true,
@@ -27,16 +50,10 @@ export const getRecomendations = async (req, res) => {
                 phone: true,
                 email: true,
                 city: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
+                  select: { id: true, name: true },
                 },
                 province: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
+                  select: { id: true, name: true },
                 },
               },
             },
@@ -55,25 +72,12 @@ export const getRecomendations = async (req, res) => {
                 address: true,
                 phone: true,
                 email: true,
-                city: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
-                },
-                province: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
-                },
+                city: { select: { id: true, name: true } },
+                province: { select: { id: true, name: true } },
               },
             },
             class: {
-              select: {
-                id: true,
-                name: true,
-              },
+              select: { id: true, name: true },
             },
             familyMember: {
               select: {
@@ -82,20 +86,14 @@ export const getRecomendations = async (req, res) => {
                 birthDate: true,
                 gender: true,
                 familyId: true,
-                residence: {
-                  select: {
-                    id: true,
-                    address: true,
-                  },
+                SocioEconomic: {
+                  select: { address: true },
                 },
                 nutrition: {
                   select: {
                     id: true,
                     nutritionStatus: {
-                      select: {
-                        id: true,
-                        information: true,
-                      },
+                      select: { id: true, information: true },
                     },
                   },
                 },
@@ -116,7 +114,7 @@ export const getRecomendations = async (req, res) => {
     return successResponse(
       res,
       { totalRows, totalPage, page, limit, recomend },
-      "List of recommendations retrieved successfully"
+      "List of recommendations retrieved successfully",
     );
   } catch (error) {
     return errorResponse(res, error, "Internal server error");
@@ -131,11 +129,11 @@ export const createRecommendation = async (req, res) => {
       return errorResponse(
         res,
         403,
-        "User is not associated with an institution"
+        "User is not associated with an institution",
       );
     }
 
-    const { familyMemberId, studentId } = req.body;
+    const { familyMemberId, studentId, healthCareId } = req.body;
     if (!familyMemberId) {
       return errorResponse(res, 400, "familyMemberId is required");
     }
@@ -145,6 +143,7 @@ export const createRecommendation = async (req, res) => {
         id: studentId,
         familyMemberId,
       },
+      include: { familyMember: { select: { fullName: true } } },
     });
 
     if (!student) {
@@ -162,7 +161,7 @@ export const createRecommendation = async (req, res) => {
       return errorResponse(
         res,
         400,
-        "Murid ini sudah direkomendasikan sebelumnya"
+        "Murid ini sudah direkomendasikan sebelumnya",
       );
     }
 
@@ -170,14 +169,61 @@ export const createRecommendation = async (req, res) => {
       data: {
         studentId: student.id,
         submittedById: user.id,
+        healthcareInstitutionId: healthCareId ? Number(healthCareId) : null,
         status: "PENDING",
       },
     });
 
+    // Notifikasi ke puskesmas
+    const healthcareInstitution = healthCareId
+      ? await prisma.institution.findUnique({
+          where: { id: Number(healthCareId) },
+          include: { user: true },
+        })
+      : null;
+
+    if (healthcareInstitution?.user) {
+      const schoolInstitution = await prisma.institution.findFirst({
+        where: { user_id: user.id },
+      });
+
+      await createNotification(
+        healthcareInstitution.user.id,
+        "Rekomendasi Baru",
+        `Siswa ${student.familyMember?.fullName || "tersebut"} dari ${
+          schoolInstitution?.name || "sekolah"
+        } telah direkomendasikan untuk penanganan gizi. Silakan ditindaklanjuti.`,
+        "recommendation_received",
+        recommendation.id,
+      );
+    }
+
+    // Notifikasi ke parent siswa
+    const familyMember = await prisma.familyMember.findUnique({
+      where: { id: student.familyMemberId },
+      include: {
+        family: {
+          include: { user: true },
+        },
+      },
+    });
+
+    if (familyMember?.family?.user) {
+      await createNotification(
+        familyMember.family.user.id,
+        "Rekomendasi Dikirim",
+        `Ananda ${familyMember.fullName} telah direkomendasikan ke Puskesmas ${
+          healthcareInstitution?.name || "puskesmas"
+        } untuk pemeriksaan lanjutan. Silakan pantau perkembangannya.`,
+        "recommendation_sent",
+        recommendation.id,
+      );
+    }
+
     return successResponse(
       res,
       recommendation,
-      "Recommendation created successfully"
+      "Recommendation created successfully",
     );
   } catch (error) {
     console.error(error);
@@ -200,7 +246,7 @@ export const changeStatusToProcessed = async (req, res) => {
     return successResponse(
       res,
       data,
-      "Berhasil dimasukan ke dalam antrian proses"
+      "Berhasil dimasukan ke dalam antrian proses",
     );
   } catch (error) {
     return errorResponse(res, error, "Gagal memasukan ke dalam antrian proses");
@@ -311,7 +357,7 @@ export const getResponseParent = async (req, res) => {
         questions,
         answers,
       },
-      "Berhasil mendapatkan data"
+      "Berhasil mendapatkan data",
     );
   } catch (error) {
     return errorResponse(res, error, "Failed to get response");
@@ -407,7 +453,7 @@ export const getResponseInstitution = async (req, res) => {
         questions,
         answers,
       },
-      "Berhasil mendapatkan data"
+      "Berhasil mendapatkan data",
     );
   } catch (error) {
     return errorResponse(res, error, "Failed to get response");
@@ -455,6 +501,44 @@ export const createIntervention = async (req, res) => {
 
       return intervention;
     });
+
+    // Notifikasi ke parent
+    const recWithParent = await prisma.recommendation.findUnique({
+      where: { id },
+      include: {
+        student: {
+          include: {
+            familyMember: {
+              include: {
+                family: { include: { user: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const parentUser = recWithParent?.student?.familyMember?.family?.user;
+    if (parentUser) {
+      const puskesmasUser = await prisma.user.findUnique({
+        where: { id: user.id },
+        include: { institution: { select: { name: true } } },
+      });
+      const rawName = puskesmasUser?.institution?.name || "";
+      const puskesmasName = rawName
+        ? rawName.toLowerCase().includes("puskesmas")
+          ? rawName
+          : `Puskesmas ${rawName}`
+        : "Puskesmas";
+
+      await createNotification(
+        parentUser.id,
+        "Tindak Lanjut Rekomendasi",
+        `${puskesmasName} telah mengirimkan surat tindak lanjut untuk ${recWithParent.student.familyMember.fullName}. Silakan periksa halaman rekomendasi.`,
+        "intervention_created",
+        id,
+      );
+    }
 
     res.status(201).json({
       status: "Success",
@@ -574,7 +658,7 @@ export const getInterventionsBelongToInstitution = async (req, res) => {
                     fullName: true,
                     birthDate: true,
                     gender: true,
-                    residence: {
+                    SocioEconomic: {
                       select: {
                         address: true,
                       },
@@ -636,9 +720,7 @@ export const getInterventionsBelongToInstitution = async (req, res) => {
       },
       skip,
       orderBy: {
-        recommendation: {
-          updatedAt: "desc",
-        },
+        createdAt: "desc",
       },
     });
     const totalPages = Math.ceil(interventions.length / limit);
@@ -713,7 +795,7 @@ export const getInterventionsBelongToFamily = async (req, res) => {
                     fullName: true,
                     birthDate: true,
                     gender: true,
-                    residence: {
+                    SocioEconomic: {
                       select: {
                         address: true,
                       },

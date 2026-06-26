@@ -61,16 +61,10 @@ export const getStudents = async (req, res) => {
                 phone: true,
                 email: true,
                 province: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
+                  select: { id: true, name: true },
                 },
                 city: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
+                  select: { id: true, name: true },
                 },
               },
             },
@@ -202,16 +196,10 @@ export const getStudentByUser = async (req, res) => {
                 phone: true,
                 email: true,
                 province: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
+                  select: { id: true, name: true },
                 },
                 city: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
+                  select: { id: true, name: true },
                 },
               },
             },
@@ -239,9 +227,30 @@ export const getStudentByUser = async (req, res) => {
       },
     });
 
+    const studentIds = students
+      .map((s) => s.student?.id)
+      .filter(Boolean);
+
+    let activeRecStudentIds = new Set();
+    if (studentIds.length > 0) {
+      const activeRecs = await prisma.recommendation.findMany({
+        where: {
+          studentId: { in: studentIds },
+          status: { in: ["PENDING", "PROCESSED"] },
+        },
+        select: { studentId: true },
+      });
+      activeRecStudentIds = new Set(activeRecs.map((r) => r.studentId));
+    }
+
+    const studentsWithFlag = students.map((s) => ({
+      ...s,
+      isRecommending: s.student ? activeRecStudentIds.has(s.student.id) : false,
+    }));
+
     return successResponse(
       res,
-      { totalRows, totalPage, page, limit, students },
+      { totalRows, totalPage, page, limit, students: studentsWithFlag },
       "Students retrieved successfully",
     );
   } catch (error) {

@@ -178,33 +178,51 @@ export const updateStafff = async (req, res) => {
 export const getStaffs = async (req, res) => {
   try {
     const user = req.user;
+    const page = parseInt(req.query.page) || 0;
+    const limit = parseInt(req.query.limit) || 10;
+    const keyword = req.query.keyword ?? "";
+    const skip = limit * page;
+
     const userInstitution = await prisma.user.findUnique({
-      where: {
-        id: user.id,
-      },
+      where: { id: user.id },
       select: {
-        institution: {
-          select: {
-            id: true,
-          },
-        },
+        institution: { select: { id: true } },
       },
     });
     if (!userInstitution) {
       throw new Error("User tidak di institusi manapun");
     }
-    const staffs = await prisma.staff.findMany({
-      where: {
-        healthcare_id: userInstitution.institution?.id,
-      },
-    });
+
+    const whereClause = {
+      healthcare_id: userInstitution.institution?.id,
+      ...(keyword !== "" && {
+        fullName: { contains: keyword },
+      }),
+    };
+
+    const [staffs, totalRows] = await Promise.all([
+      prisma.staff.findMany({
+        where: whereClause,
+        skip,
+        take: limit,
+      }),
+      prisma.staff.count({ where: whereClause }),
+    ]);
+
+    const totalPages = Math.ceil(totalRows / limit);
 
     res.status(200).json({
       status: "Success",
       message: "Berhasil mendapatkan data",
-      data: staffs,
+      data: {
+        staffs,
+        page,
+        limit,
+        totalPages,
+        totalRows,
+      },
     });
   } catch (err) {
-    return errorResponse(res, err, "Gagal menambahkan staff");
+    return errorResponse(res, err, "Gagal mendapatkan staff");
   }
 };
