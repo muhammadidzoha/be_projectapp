@@ -18,6 +18,7 @@ import StatisticsRoute from "./StatisticsRoute.js";
 import PartnerRoutes from "./PartnerRoute.js";
 import { staffRouter } from "./StaffRoute.js";
 import NotificationRoutes from "./NotificationRoute.js";
+import IMTRoutes from "./IMTRoute.js";
 
 const router = Router();
 
@@ -40,5 +41,6 @@ router.use("/api", StatisticsRoute);
 router.use("/api", PartnerRoutes);
 router.use("/api", staffRouter);
 router.use("/api", NotificationRoutes);
+router.use("/api", IMTRoutes);
 
 export default router;
