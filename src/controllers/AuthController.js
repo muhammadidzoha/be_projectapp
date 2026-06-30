@@ -89,7 +89,7 @@ export const registerInstitution = async (req, res) => {
       return errorResponse(
         res,
         null,
-        "Institusi ini sudah digunakan oleh akun lain"
+        "Institusi ini sudah digunakan oleh akun lain",
       );
 
     const newInstitution = await prisma.user.create({
@@ -177,14 +177,14 @@ export const login = async (req, res) => {
       process.env.APP_ACCESS_TOKEN_SECRET,
       {
         expiresIn: process.env?.NODE_ENV === "production" ? "20s" : 3600 * 3,
-      }
+      },
     );
     const refreshToken = jwt.sign(
       { id, username, email, role: roleName },
       process.env.APP_REFRESH_TOKEN_SECRET,
       {
         expiresIn: "1d",
-      }
+      },
     );
     await prisma.user.update({
       data: {
@@ -196,6 +196,8 @@ export const login = async (req, res) => {
     });
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       maxAge: 24 * 60 * 60 * 1000,
     });
     return successResponse(res, { accessToken }, "Login berhasil");
