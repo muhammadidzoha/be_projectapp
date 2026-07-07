@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { errorResponse, successResponse } from "../helpers/ResponseHelper.js";
+import { getInstitutionByUser } from "../helpers/InstitutionHelper.js";
 
 const prisma = new PrismaClient();
 
@@ -383,9 +384,7 @@ export const getSchoolDashboardSummary = async (req, res) => {
   try {
     const user = req.user;
 
-    const institution = await prisma.institution.findUnique({
-      where: { user_id: user.id },
-    });
+    const institution = await getInstitutionByUser(user.id, user.role);
 
     if (!institution) return errorResponse(res, null, "Institution not found");
 
@@ -437,73 +436,58 @@ export const getSchoolDashboardSummary = async (req, res) => {
     classes.forEach((c) => {
       classMap[c.id] = c.name;
     });
-    const studentsPerClass = classGroups.map((g) => ({
-      className: classMap[g.classId] || "Unknown",
-      total: g._count.id,
-    }));
 
-    const QUESTIONNAIRE_THRESHOLDS = {
-      "Pelayanan Kesehatan Sekolah": { min: 17, good: "Tinggi", bad: "Rendah" },
-    };
-
-    const quesioner = await prisma.quesioner.findFirst({
+    // QUESTIONNAIRE DATA — only Pelayanan Kesehatan Sekolah
+    const schoolQuesioner = await prisma.quesioner.findFirst({
       where: { title: "Pelayanan Kesehatan Sekolah" },
     });
 
-    let questionnaireResult = null;
     let questionnaireProgress = 0;
-    let totalQuestionnaires = 0;
-    let answeredQuestionnaires = 0;
+    let questionnaireResult = null;
+    let schoolConclusion = null;
 
-    if (quesioner) {
-      totalQuestionnaires = 1;
+    if (schoolQuesioner) {
       const response = await prisma.response.findFirst({
         where: {
           institutionId,
-          quisionerId: quesioner.id,
+          quisionerId: schoolQuesioner.id,
         },
-        orderBy: { created_at: "desc" },
       });
 
       if (response) {
-        answeredQuestionnaires = 1;
-        const threshold = QUESTIONNAIRE_THRESHOLDS[quesioner.title]?.min ?? 17;
-        const totalScore = response.totalScore || 0;
+        questionnaireProgress = 100;
+
+        const interpretation =
+          response.totalScore >= 17 ? "Tinggi" : "Rendah";
+
         questionnaireResult = {
-          quesionerId: quesioner.id,
-          title: quesioner.title,
-          totalScore,
-          interpretation:
-            totalScore >= threshold
-              ? (QUESTIONNAIRE_THRESHOLDS[quesioner.title]?.good ?? "Tinggi")
-              : (QUESTIONNAIRE_THRESHOLDS[quesioner.title]?.bad ?? "Rendah"),
+          title: schoolQuesioner.title,
+          totalScore: response.totalScore,
+          interpretation,
         };
-      }
-    }
 
-    questionnaireProgress =
-      totalQuestionnaires > 0
-        ? Math.round((answeredQuestionnaires / totalQuestionnaires) * 100)
-        : 0;
-
-    const schoolConclusion = questionnaireResult
-      ? questionnaireResult.interpretation === "Tinggi"
-        ? {
-            kategori: "Pelayanan Kesehatan Sekolah Baik",
-            icon: "🏆",
+        if (interpretation === "Tinggi") {
+          schoolConclusion = {
             color: "from-emerald-500 to-teal-600",
-            saran: ["Budayakan perilaku hidup sehat dalam lingkungan sekolah"],
-          }
-        : {
-            kategori: "Pelayanan Kesehatan Sekolah Perlu Ditingkatkan",
-            icon: "⚠️",
+            icon: "🏆",
+            kategori: "Pelayanan Kesehatan Sekolah Baik",
+            saran: [
+              "Budayakan perilaku hidup sehat dalam lingkungan sekolah",
+            ],
+          };
+        } else {
+          schoolConclusion = {
             color: "from-amber-500 to-orange-600",
+            icon: "⚠️",
+            kategori: "Pelayanan Kesehatan Sekolah Perlu Ditingkatkan",
             saran: [
               "Rekomendasi tindaklanjut Puskesmas",
               "Budayakan perilaku hidup sehat dalam lingkungan sekolah",
             ],
-          }
-      : null;
+          };
+        }
+      }
+    }
 
     return successResponse(
       res,
@@ -512,16 +496,19 @@ export const getSchoolDashboardSummary = async (req, res) => {
         totalClasses,
         totalTeachers,
         totalPartners,
+        nutritionDistribution,
+        studentsPerClass: classGroups.map((g) => ({
+          className: classMap[g.classId] || "Unknown",
+          total: g._count.id,
+        })),
         questionnaireProgress,
         questionnaireResult,
-        nutritionDistribution,
-        studentsPerClass,
         schoolConclusion,
       },
       "School dashboard summary retrieved successfully",
     );
   } catch (error) {
-    return errorResponse(res, error, "Failed to get school dashboard summary");
+    return errorResponse(res, error, "Internal server error");
   }
 };
 
