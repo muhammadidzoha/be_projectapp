@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { errorResponse, successResponse } from "../helpers/ResponseHelper.js";
+import { getInstitutionByUser } from "../helpers/InstitutionHelper.js";
 
 const prisma = new PrismaClient();
 
@@ -192,7 +193,7 @@ export const getStudentByUser = async (req, res) => {
 
   try {
     const user = req.user;
-    if (!user || user.role !== "school") {
+    if (!user || !["school", "teacher"].includes(user.role)) {
       return errorResponse(
         res,
         404,
@@ -200,11 +201,7 @@ export const getStudentByUser = async (req, res) => {
       );
     }
 
-    const institution = await prisma.institution.findFirst({
-      where: {
-        user_id: user.id,
-      },
-    });
+    const institution = await getInstitutionByUser(user.id, user.role);
 
     if (!institution) {
       return errorResponse(res, 404, "Institution not found for this user");

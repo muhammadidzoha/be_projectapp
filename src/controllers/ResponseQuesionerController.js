@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { errorResponse, successResponse } from "../helpers/ResponseHelper.js";
+import { getInstitutionByUser } from "../helpers/InstitutionHelper.js";
 
 const prisma = new PrismaClient();
 
@@ -90,7 +91,7 @@ export const getResponseQuesioner = async (req, res) => {
     return successResponse(
       res,
       { totalRows, totalPage, page, limit, questions, answers },
-      "Berhasil mendapatkan data"
+      "Berhasil mendapatkan data",
     );
   } catch (error) {
     return errorResponse(res, error, "Failed to get response");
@@ -189,7 +190,7 @@ export const createResponseQuesioner = async (req, res) => {
 
     const HitungScore = sanitizedData.reduce(
       (sum, item) => sum + (item.score || 0),
-      0
+      0,
     );
 
     await prisma.response.update({
@@ -206,7 +207,7 @@ export const createResponseQuesioner = async (req, res) => {
     return errorResponse(
       res,
       error,
-      "Gagal menjawab kuesioner, silahkan diulang"
+      "Gagal menjawab kuesioner, silahkan diulang",
     );
   }
 };
@@ -278,8 +279,7 @@ export const checkAnsweredQuesioner = async (req, res) => {
 export const updateResponseQuesioner = async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const { option_id, boolean_value, scaleValue, score } =
-      req.body;
+    const { option_id, boolean_value, scaleValue, score } = req.body;
 
     const updateResponse = await prisma.answer.update({
       where: {
@@ -328,11 +328,7 @@ export const getResponseQuesionerInstitution = async (req, res) => {
     const search = req.query.search || "";
     const offset = limit * page;
 
-    const institution = await prisma.institution.findFirst({
-      where: {
-        user_id: user.id,
-      },
-    });
+    const institution = await getInstitutionByUser(user.id, user.role);
 
     if (!institution) {
       return errorResponse(res, 404, "Institution not found");
@@ -390,7 +386,6 @@ export const getResponseQuesionerInstitution = async (req, res) => {
     });
 
     const totalPage = Math.ceil(totalRows / limit);
-
     const answers = await prisma.answer.findMany({
       where: {
         responseId: response.id,
@@ -407,15 +402,8 @@ export const getResponseQuesionerInstitution = async (req, res) => {
 
     return successResponse(
       res,
-      {
-        totalRows,
-        totalPage,
-        page,
-        limit,
-        questions,
-        answers,
-      },
-      "Berhasil mendapatkan data"
+      { totalRows, totalPage, page, limit, questions, answers },
+      "Berhasil mendapatkan data",
     );
   } catch (error) {
     return errorResponse(res, error, "Failed to get response");
@@ -436,16 +424,12 @@ export const createResponseQuesionerInstitution = async (req, res) => {
       return errorResponse(res, 400, "Data must be an array in 'answers'");
     }
 
-    // Cari institution milik user
-    const institution = await prisma.institution.findFirst({
-      where: { user_id: user.id },
-    });
+    const institution = await getInstitutionByUser(user.id, user.role);
 
     if (!institution) {
       return errorResponse(res, 404, "Institution not found");
     }
 
-    // Buat response baru untuk institution
     const responseRecord = await prisma.response.create({
       data: {
         quisionerId: Number(id),
@@ -496,7 +480,7 @@ export const createResponseQuesionerInstitution = async (req, res) => {
 
     const HitungScore = sanitizedData.reduce(
       (sum, item) => sum + (item.score || 0),
-      0
+      0,
     );
 
     await prisma.response.update({
@@ -513,7 +497,7 @@ export const createResponseQuesionerInstitution = async (req, res) => {
     return errorResponse(
       res,
       error,
-      "Gagal menjawab kuesioner, silahkan diulang"
+      "Gagal menjawab kuesioner, silahkan diulang",
     );
   }
 };
@@ -523,14 +507,10 @@ export const checkAnsweredQuesionerInstitution = async (req, res) => {
     const user = req.user;
     const quesionerId = Number(req.params.id);
 
-    // Cari institution milik user
-    const institution = await prisma.institution.findFirst({
-      where: { user_id: user.id },
-    });
+    const institution = await getInstitutionByUser(user.id, user.role);
 
     if (!institution) return errorResponse(res, 404, "Institution not found");
 
-    // Cari response untuk institution & quesioner
     const response = await prisma.response.findFirst({
       where: {
         institutionId: institution.id,
@@ -538,15 +518,12 @@ export const checkAnsweredQuesionerInstitution = async (req, res) => {
       },
     });
 
-    // Jika belum pernah menjawab, return answered: false
     if (!response) return res.json({ answered: false });
 
-    // Hitung total pertanyaan pada quesioner
     const totalQuestions = await prisma.question.count({
       where: { quesioner_id: quesionerId },
     });
 
-    // Hitung total jawaban pada response
     const totalAnswers = await prisma.answer.count({
       where: { responseId: response.id },
     });
@@ -664,7 +641,7 @@ export const showResponseForParent = async (req, res) => {
         questions,
         answers,
       },
-      "Berhasil mendapatkan data"
+      "Berhasil mendapatkan data",
     );
   } catch (error) {
     return errorResponse(res, error, "Failed to get response");
@@ -768,7 +745,7 @@ export const showResponseForInstitution = async (req, res) => {
         questions,
         answers,
       },
-      "Berhasil mendapatkan data"
+      "Berhasil mendapatkan data",
     );
   } catch (error) {
     return errorResponse(res, error, "Failed to get response");

@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { errorResponse, successResponse } from "../helpers/ResponseHelper.js";
 import { createNotification } from "./NotificationController.js";
+import { getInstitutionByUser } from "../helpers/InstitutionHelper.js";
 
 const prisma = new PrismaClient();
 
@@ -12,16 +13,12 @@ export const getRecomendations = async (req, res) => {
   try {
     let whereClause = {};
     if (req.user?.role === "healthcare") {
-      const institution = await prisma.institution.findFirst({
-        where: { user_id: req.user.id },
-      });
+      const institution = await getInstitutionByUser(req.user.id, req.user.role);
       if (institution) {
         whereClause.healthcareInstitutionId = institution.id;
       }
-    } else if (req.user?.role === "school") {
-      const institution = await prisma.institution.findFirst({
-        where: { user_id: req.user.id },
-      });
+    } else if (["school", "teacher"].includes(req.user?.role)) {
+      const institution = await getInstitutionByUser(req.user.id, req.user.role);
       if (institution) {
         whereClause.submittedBy = {
           institution: { id: institution.id },
