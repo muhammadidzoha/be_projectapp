@@ -581,7 +581,6 @@ export const getSingleRecommendation = async (req, res) => {
                     },
                   },
                 },
-                residence: true,
               },
             },
           },

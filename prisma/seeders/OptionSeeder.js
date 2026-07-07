@@ -9,10 +9,8 @@ export const seedOptions = async () => {
         OR: [
           { title: "Benar" },
           { title: "Salah" },
-          { title: "1" },
-          { title: "2" },
-          { title: "3" },
-          { title: "4" },
+          { title: "Tidak pernah dilakukan anak" },
+          { title: "Tidak pernah" },
           { title: "0" },
         ],
       },
@@ -29,12 +27,22 @@ export const seedOptions = async () => {
     });
 
     const booleanTitles = ["Benar", "Salah"];
-    const parentTitles = ["1", "2", "3", "4"];
-    const schoolTitles = ["0", "1", "2", "3"];
+    const parentTitles = [
+      "0. Tidak pernah dilakukan anak",
+      "1. Dilakukan 1-2 kali dalam seminggu",
+      "2. Dilakukan 3-4 kali dalam seminggu",
+      "3. Dilakukan setiap hari",
+    ];
+    const schoolTitles = [
+      "0. Tidak pernah",
+      "1. Jarang (1-2x dalam tahun ajaran yang berlangsung)",
+      "2. Sering (3-4x dalam tahun ajaran yang berlangsung)",
+      "3. Selalu (> 4x dalam tahun ajaran yang berlangsung)",
+    ];
 
     const getScore = (qid, isNegative, idx) => {
       if (qid <= 15) return isNegative ? idx : 1 - idx;
-      if (qid <= 35) return isNegative ? 4 - idx : idx + 1;
+      if (qid <= 35) return isNegative ? 3 - idx : idx;
       return isNegative ? 3 - idx : idx;
     };
 
