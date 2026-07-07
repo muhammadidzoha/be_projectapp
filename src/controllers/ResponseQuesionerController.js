@@ -201,12 +201,12 @@ export const createResponseQuesioner = async (req, res) => {
       },
     });
 
-    return successResponse(res, response, "Berhasil menjawab kuisioner");
+    return successResponse(res, response, "Berhasil menjawab kuesioner");
   } catch (error) {
     return errorResponse(
       res,
       error,
-      "Gagal menjawab kuisioner, silahkan diulang"
+      "Gagal menjawab kuesioner, silahkan diulang"
     );
   }
 };
@@ -508,12 +508,12 @@ export const createResponseQuesionerInstitution = async (req, res) => {
       },
     });
 
-    return successResponse(res, response, "Berhasil menjawab kuisioner");
+    return successResponse(res, response, "Berhasil menjawab kuesioner");
   } catch (error) {
     return errorResponse(
       res,
       error,
-      "Gagal menjawab kuisioner, silahkan diulang"
+      "Gagal menjawab kuesioner, silahkan diulang"
     );
   }
 };

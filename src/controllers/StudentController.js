@@ -3,6 +3,87 @@ import { errorResponse, successResponse } from "../helpers/ResponseHelper.js";
 
 const prisma = new PrismaClient();
 
+// ---- constants for conclusion computation ----
+
+const SOCIO_ECONOMIC_POINTS = {
+  residence: { MILIK_SENDIRI: 3, MENYEWA: 2, BERSAMA_ORANG_TUA: 1 },
+  children: { SATU: 3, DUA_SAMPAI_TIGA: 2, EMPAT_ATAU_LEBIH: 1 },
+  underFive: { TIDAK_ADA: 4, SATU: 3, DUA_SAMPAI_TIGA: 2, EMPAT_ATAU_LEBIH: 1 },
+  income: {
+    KURANG_DARI_LIMA_JUTA: 1,
+    LIMA_JUTA_SAMPAI_SEPULUH_JUTA: 2,
+    LEBIH_DARI_SEPULUH_JUTA: 3,
+  },
+};
+
+const SOCIO_ECONOMIC_THRESHOLD = 8;
+const QUESTIONNAIRE_PARENT_THRESHOLDS = {
+  "Kebiasaan Sehari-hari Anak": 34,
+  "Tingkat Pengetahuan Gizi Seimbang": 13,
+};
+
+const SCHOOL_HEALTH_THRESHOLD = 17;
+
+const categorizeEducation = (edu) => {
+  if (!edu) return "Dasar";
+  return ["TIDAK_SEKOLAH", "SD", "SMP"].includes(edu)
+    ? "Dasar"
+    : "Menengah-Tinggi";
+};
+
+const computeSocioEconomicInterpretation = (se) => {
+  if (!se) return null;
+  const totalScore =
+    (SOCIO_ECONOMIC_POINTS.residence[se.residenceStatus] ?? 0) +
+    (SOCIO_ECONOMIC_POINTS.children[se.childrenCount] ?? 0) +
+    (SOCIO_ECONOMIC_POINTS.underFive[se.underFiveCount] ?? 0) +
+    (SOCIO_ECONOMIC_POINTS.income[se.familyIncomeLevel] ?? 0);
+  return totalScore >= SOCIO_ECONOMIC_THRESHOLD ? "Menengah-Tinggi" : "Dasar";
+};
+
+const computeConclusion = (
+  nutritionStatus,
+  parentData,
+  schoolHealthInterpretation,
+) => {
+  if (!nutritionStatus) return null;
+
+  if (nutritionStatus === "OVERWEIGHT-OBESITAS") return "Gizi Lebih";
+  if (nutritionStatus === "GIZI BURUK-KURANG")
+    return "Tidak Berisiko Gizi Lebih";
+
+  if (nutritionStatus === "GIZI BAIK") {
+    const kebiasaanBaik =
+      (parentData?.kebiasaanScore ?? 0) >=
+      QUESTIONNAIRE_PARENT_THRESHOLDS["Kebiasaan Sehari-hari Anak"];
+    const pengetahuanBaik =
+      (parentData?.pengetahuanScore ?? 0) >=
+      QUESTIONNAIRE_PARENT_THRESHOLDS["Tingkat Pengetahuan Gizi Seimbang"];
+    const sosialEkonomiBaik =
+      parentData?.socioEconomicInterpretation === "Menengah-Tinggi";
+    const pendidikanBaik = parentData?.parentEducation === "Menengah-Tinggi";
+    const pelkesBaik = schoolHealthInterpretation === "Tinggi";
+
+    const all5Good =
+      kebiasaanBaik &&
+      pengetahuanBaik &&
+      sosialEkonomiBaik &&
+      pendidikanBaik &&
+      pelkesBaik;
+
+    if (all5Good) return "Tidak Berisiko Gizi Lebih";
+
+    const triggerBad = !kebiasaanBaik || !pengetahuanBaik || !sosialEkonomiBaik;
+    if (triggerBad) return "Berisiko Gizi Lebih";
+
+    return "Tidak Berisiko Gizi Lebih";
+  }
+
+  return null;
+};
+
+// ---- existing controller functions ----
+
 export const getStudents = async (req, res) => {
   const page = parseInt(req.query.page) || 0;
   const limit = parseInt(req.query.limit) || 10;
@@ -167,6 +248,7 @@ export const getStudentByUser = async (req, res) => {
       select: {
         id: true,
         fullName: true,
+        familyId: true,
         nutrition: {
           select: {
             id: true,
@@ -227,30 +309,122 @@ export const getStudentByUser = async (req, res) => {
       },
     });
 
-    const studentIds = students
-      .map((s) => s.student?.id)
-      .filter(Boolean);
+    const studentIds = students.map((s) => s.student?.id).filter(Boolean);
 
     let activeRecStudentIds = new Set();
+    let completedRecMap = {};
     if (studentIds.length > 0) {
-      const activeRecs = await prisma.recommendation.findMany({
-        where: {
-          studentId: { in: studentIds },
-          status: { in: ["PENDING", "PROCESSED"] },
-        },
-        select: { studentId: true },
+      const recs = await prisma.recommendation.findMany({
+        where: { studentId: { in: studentIds } },
+        select: { id: true, studentId: true, status: true },
       });
-      activeRecStudentIds = new Set(activeRecs.map((r) => r.studentId));
+      activeRecStudentIds = new Set(
+        recs
+          .filter((r) => r.status === "PENDING" || r.status === "PROCESSED")
+          .map((r) => r.studentId),
+      );
+      for (const r of recs) {
+        if (r.status === "COMPLETED") {
+          completedRecMap[r.studentId] = { id: r.id, status: r.status };
+        }
+      }
     }
 
+    // Ganti mapping jadi tambah completedRecommendation:
     const studentsWithFlag = students.map((s) => ({
       ...s,
       isRecommending: s.student ? activeRecStudentIds.has(s.student.id) : false,
+      completedRecommendation: s.student
+        ? completedRecMap[s.student.id] || null
+        : null,
     }));
+
+    // ---- compute conclusion per student ----
+
+    const familyIds = [
+      ...new Set(studentsWithFlag.map((s) => s.familyId).filter(Boolean)),
+    ];
+
+    const familyConclusionMap = {};
+    if (familyIds.length > 0) {
+      const families = await prisma.family.findMany({
+        where: { id: { in: familyIds } },
+        select: {
+          id: true,
+          familyMember: {
+            where: { relation: { in: ["AYAH", "IBU"] } },
+            select: {
+              education: true,
+              SocioEconomic: true,
+              Response: {
+                select: {
+                  totalScore: true,
+                  quesioner: { select: { title: true } },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      for (const fam of families) {
+        const parent = fam.familyMember[0];
+        if (!parent) {
+          familyConclusionMap[fam.id] = null;
+          continue;
+        }
+
+        const qMap = {};
+        for (const r of parent.Response || []) {
+          qMap[r.quesioner.title] = r.totalScore;
+        }
+
+        familyConclusionMap[fam.id] = {
+          socioEconomicInterpretation: computeSocioEconomicInterpretation(
+            parent.SocioEconomic,
+          ),
+          parentEducation: categorizeEducation(parent.education),
+          kebiasaanScore: qMap["Kebiasaan Sehari-hari Anak"],
+          pengetahuanScore: qMap["Tingkat Pengetahuan Gizi Seimbang"],
+        };
+      }
+    }
+
+    // School health service (same for all students in this school)
+    let schoolHealthInterpretation = "Rendah";
+    const healthQuesioner = await prisma.quesioner.findFirst({
+      where: { title: "Pelayanan Kesehatan Sekolah" },
+    });
+    if (healthQuesioner) {
+      const healthResponse = await prisma.response.findFirst({
+        where: {
+          institutionId: institution.id,
+          quisionerId: healthQuesioner.id,
+        },
+        orderBy: { created_at: "desc" },
+      });
+      if (
+        healthResponse &&
+        (healthResponse.totalScore ?? 0) >= SCHOOL_HEALTH_THRESHOLD
+      ) {
+        schoolHealthInterpretation = "Tinggi";
+      }
+    }
+
+    const studentsWithConclusion = studentsWithFlag.map((s) => {
+      const nutritionStatus = s.nutrition?.[0]?.nutritionStatus?.displayName;
+      const conclusion = computeConclusion(
+        nutritionStatus,
+        familyConclusionMap[s.familyId],
+        schoolHealthInterpretation,
+      );
+      const { familyId, ...rest } = s;
+      return { ...rest, conclusion };
+    });
 
     return successResponse(
       res,
-      { totalRows, totalPage, page, limit, students: studentsWithFlag },
+      { totalRows, totalPage, page, limit, students: studentsWithConclusion },
       "Students retrieved successfully",
     );
   } catch (error) {
