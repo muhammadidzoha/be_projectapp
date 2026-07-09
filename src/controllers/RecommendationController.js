@@ -13,12 +13,18 @@ export const getRecomendations = async (req, res) => {
   try {
     let whereClause = {};
     if (req.user?.role === "healthcare") {
-      const institution = await getInstitutionByUser(req.user.id, req.user.role);
+      const institution = await getInstitutionByUser(
+        req.user.id,
+        req.user.role,
+      );
       if (institution) {
         whereClause.healthcareInstitutionId = institution.id;
       }
     } else if (["school", "teacher"].includes(req.user?.role)) {
-      const institution = await getInstitutionByUser(req.user.id, req.user.role);
+      const institution = await getInstitutionByUser(
+        req.user.id,
+        req.user.role,
+      );
       if (institution) {
         whereClause.submittedBy = {
           institution: { id: institution.id },
@@ -565,7 +571,29 @@ export const getSingleRecommendation = async (req, res) => {
             },
           },
         },
-        Intervention: true,
+        Intervention: {
+          include: {
+            user: {
+              select: {
+                username: true,
+                staff: {
+                  select: {
+                    fullName: true,
+                  },
+                },
+                institution: {
+                  select: {
+                    id: true,
+                    name: true,
+                    address: true,
+                    phone: true,
+                    email: true,
+                  },
+                },
+              },
+            },
+          },
+        },
         student: {
           include: {
             class: true,
