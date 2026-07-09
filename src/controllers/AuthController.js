@@ -80,7 +80,6 @@ export const registerInstitution = async (req, res) => {
           { name: institutionName },
           { email: institutionEmail },
           { phone: institutionPhone },
-          // { address: institutionAddress },
         ],
       },
     });
@@ -176,14 +175,14 @@ export const login = async (req, res) => {
       { id, username, email, role: roleName },
       process.env.APP_ACCESS_TOKEN_SECRET,
       {
-        expiresIn: process.env?.NODE_ENV === "production" ? "20s" : 3600 * 3,
+        expiresIn: process.env?.NODE_ENV === "production" ? 1800 : 3600 * 3,
       },
     );
     const refreshToken = jwt.sign(
       { id, username, email, role: roleName },
       process.env.APP_REFRESH_TOKEN_SECRET,
       {
-        expiresIn: "1d",
+        expiresIn: "7d",
       },
     );
     await prisma.user.update({
@@ -198,7 +197,7 @@ export const login = async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-      maxAge: 24 * 60 * 60 * 1000,
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     });
     return successResponse(res, { accessToken }, "Login berhasil");
   } catch (error) {
