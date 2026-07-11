@@ -25,20 +25,19 @@ export const getClasses = async (req, res) => {
   const offset = limit * page;
 
   try {
+    const school_id = await getUserInstitution(req.user.id);
     const totalRows = await prisma.class.count({
       where: {
-        name: {
-          contains: search,
-        },
+        name: { contains: search },
+        school_id,
       },
     });
 
     const totalPage = Math.ceil(totalRows / limit);
     const classes = await prisma.class.findMany({
       where: {
-        name: {
-          contains: search,
-        },
+        name: { contains: search },
+        school_id,
       },
       select: {
         id: true,
@@ -53,9 +52,7 @@ export const getClasses = async (req, res) => {
       },
       skip: offset,
       take: limit,
-      orderBy: {
-        id: "asc",
-      },
+      orderBy: { id: "asc" },
     });
     return successResponse(
       res,
@@ -76,7 +73,7 @@ export const createClasses = async (req, res) => {
     if (Array.isArray(classes)) {
       const createdClasses = [];
       for (const cls of classes) {
-        const existingClass = await prisma.class.findUnique({
+        const existingClass = await prisma.class.findFirst({
           where: { name: cls.name, school_id },
         });
 
@@ -90,7 +87,7 @@ export const createClasses = async (req, res) => {
 
       return successResponse(res, createdClasses, "Berhasil membuat kelas");
     } else {
-      const existingClass = await prisma.class.findUnique({
+      const existingClass = await prisma.class.findFirst({
         where: { name: classes.name, school_id },
       });
 
@@ -118,33 +115,29 @@ export const updateClasses = async (req, res) => {
   const { name } = req.body;
 
   try {
+    const school_id = await getUserInstitution(req.user.id);
+
     const existingClass = await prisma.class.findUnique({
-      where: {
-        id: parseInt(id),
-      },
+      where: { id: parseInt(id) },
     });
 
     if (!existingClass) {
       return errorResponse(res, 404, "Kelas tidak ditemukan");
     }
 
+    if (existingClass.school_id !== school_id) {
+      return errorResponse(res, 403, "Kelas bukan milik sekolah anda");
+    }
+
     const updatedClass = await prisma.class.update({
-      where: {
-        id: parseInt(id),
-      },
-      data: {
-        name,
-      },
+      where: { id: parseInt(id) },
+      data: { name },
     });
 
     if (existingClass.teacher_id) {
       await prisma.teacher.update({
-        where: {
-          id: existingClass.teacher_id,
-        },
-        data: {
-          role: name,
-        },
+        where: { id: existingClass.teacher_id },
+        data: { role: name },
       });
     }
 
@@ -161,9 +154,7 @@ export const deleteClasses = async (req, res) => {
     const school_id = await getUserInstitution(req.user.id);
 
     const existingClass = await prisma.class.findFirst({
-      where: {
-        id: parseInt(id),
-      },
+      where: { id: parseInt(id) },
     });
 
     if (!existingClass) {
@@ -176,19 +167,13 @@ export const deleteClasses = async (req, res) => {
 
     if (existingClass.teacher_id) {
       await prisma.teacher.update({
-        where: {
-          id: existingClass.teacher_id,
-        },
-        data: {
-          role: null,
-        },
+        where: { id: existingClass.teacher_id },
+        data: { role: null },
       });
     }
 
     await prisma.class.delete({
-      where: {
-        id: parseInt(id),
-      },
+      where: { id: parseInt(id) },
     });
     return successResponse(res, null, "Kelas berhasil dihapus");
   } catch (error) {
@@ -201,19 +186,15 @@ export const getClassesByInstitution = async (req, res) => {
 
   try {
     const classes = await prisma.class.findMany({
-      where: {
-          school_id: Number(institutionId),
-       },
+      where: { school_id: Number(institutionId) },
       select: {
         id: true,
         name: true,
       },
-      orderBy: {
-        id: "asc",
-      }
+      orderBy: { id: "asc" },
     });
     return successResponse(res, classes, "Kelas berhasil diambil berdasarkan institusi");
   } catch (error) {
     return errorResponse(res, error, "Error saat mengambil kelas berdasarkan institusi");
   }
-}
+};
