@@ -516,9 +516,7 @@ export const getHealthcareDashboardSummary = async (req, res) => {
   try {
     const user = req.user;
 
-    const institution = await prisma.institution.findFirst({
-      where: { user_id: user.id },
-    });
+    const institution = await getInstitutionByUser(user.id, user.role);
 
     if (!institution) return errorResponse(res, null, "Institution not found");
 

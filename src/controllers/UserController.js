@@ -103,6 +103,9 @@ export const getUserById = async (req, res) => {
             address: true,
             email: true,
             phone: true,
+            city: {
+              select: { name: true },
+            }
           },
         },
       },

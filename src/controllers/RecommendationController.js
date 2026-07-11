@@ -466,7 +466,7 @@ export const getResponseInstitution = async (req, res) => {
 export const createIntervention = async (req, res) => {
   try {
     const user = req.user;
-    if (user.role !== "healthcare") {
+    if (!["healthcare", "staff"].includes(user.role)) {
       throw new Error("User not have access to this resource");
     }
     const { id } = req.params;
@@ -579,6 +579,14 @@ export const getSingleRecommendation = async (req, res) => {
                 staff: {
                   select: {
                     fullName: true,
+                    institution: {
+                      select: {
+                        name: true,
+                        address: true,
+                        phone: true,
+                        city: { select: { name: true } },
+                      },
+                    },
                   },
                 },
                 institution: {
@@ -588,6 +596,11 @@ export const getSingleRecommendation = async (req, res) => {
                     address: true,
                     phone: true,
                     email: true,
+                    city: {
+                      select: {
+                        name: true,
+                      },
+                    },
                   },
                 },
               },
@@ -599,6 +612,11 @@ export const getSingleRecommendation = async (req, res) => {
             class: true,
             familyMember: {
               include: {
+                SocioEconomic: {
+                  select: {
+                    address: true,
+                  },
+                },
                 family: {
                   include: {
                     user: {
@@ -631,28 +649,26 @@ export const getInterventionsBelongToInstitution = async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const keyword = req.query.keyword ?? "";
     const skip = limit * page;
-    const userInstitution = await prisma.user.findUnique({
-      where: {
-        id: user.id,
-      },
-      select: {
-        institution: {
-          select: {
-            id: true,
-          },
-        },
-      },
-    });
-    if (!userInstitution) {
+    const institution = await getInstitutionByUser(user.id, user.role);
+    if (!institution) {
       throw new Error("user not found");
     }
     const interventions = await prisma.intervention.findMany({
       where: {
-        user: {
-          institution: {
-            id: userInstitution.institution.id,
+        OR: [
+          {
+            user: {
+              institution: { id: institution.id },
+            },
           },
-        },
+          {
+            user: {
+              staff: {
+                institution: { id: institution.id },
+              },
+            },
+          },
+        ],
         ...(keyword !== "" && {
           recommendation: {
             student: {
@@ -736,9 +752,27 @@ export const getInterventionsBelongToInstitution = async (req, res) => {
                 address: true,
                 phone: true,
                 email: true,
+                city: {
+                  select: {
+                    name: true,
+                  },
+                },
               },
             },
             username: true,
+            staff: {
+              select: {
+                fullName: true,
+                institution: {
+                  select: {
+                    name: true,
+                    address: true,
+                    phone: true,
+                    city: { select: { name: true } },
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -873,9 +907,27 @@ export const getInterventionsBelongToFamily = async (req, res) => {
                 email: true,
                 address: true,
                 phone: true,
+                city: {
+                  select: {
+                    name: true,
+                  },
+                },
               },
             },
             username: true,
+            staff: {
+              select: {
+                fullName: true,
+                institution: {
+                  select: {
+                    name: true,
+                    address: true,
+                    phone: true,
+                    city: { select: { name: true } },
+                  },
+                },
+              },
+            },
           },
         },
       },
