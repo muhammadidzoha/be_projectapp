@@ -11,19 +11,20 @@ export const getTeachers = async (req, res) => {
   const offset = limit * page;
 
   try {
+    const user = req.user;
+    const institution = await prisma.institution.findFirst({
+      where: { user_id: user.id },
+    });
+    if (!institution) {
+      return errorResponse(res, 404, "Institusi tidak ditemukan");
+    }
+
     const totalRows = await prisma.teacher.count({
       where: {
+        school_id: institution.id,
         OR: [
-          {
-            fullName: {
-              contains: search,
-            },
-          },
-          {
-            role: {
-              contains: search,
-            },
-          },
+          { fullName: { contains: search } },
+          { role: { contains: search } },
         ],
       },
     });
@@ -31,17 +32,10 @@ export const getTeachers = async (req, res) => {
     const totalPage = Math.ceil(totalRows / limit);
     const teachers = await prisma.teacher.findMany({
       where: {
+        school_id: institution.id,
         OR: [
-          {
-            fullName: {
-              contains: search,
-            },
-          },
-          {
-            role: {
-              contains: search,
-            },
-          },
+          { fullName: { contains: search } },
+          { role: { contains: search } },
         ],
       },
       select: {
@@ -222,7 +216,7 @@ export const createTeacher = async (req, res) => {
       });
       return successResponse(
         res,
-        updateTeacher,
+        updateUser,
         "Berhasil menambahkan wali kelas"
       );
     } else {
@@ -308,24 +302,31 @@ export const createTeacher = async (req, res) => {
 
 export const updateTeacher = async (req, res) => {
   const { id } = req.params;
-
   const { role, address, phone } = req.body;
 
   try {
+    const user = req.user;
+    const institution = await prisma.institution.findFirst({
+      where: { user_id: user.id },
+    });
+    if (!institution) {
+      return errorResponse(res, 404, "Institusi tidak ditemukan");
+    }
+
     const existingTeacher = await prisma.teacher.findFirst({
-      where: {
-        id,
-      },
+      where: { id },
     });
 
     if (!existingTeacher) {
       return errorResponse(res, 404, "Guru tidak ditemukan");
     }
 
+    if (existingTeacher.school_id !== institution.id) {
+      return errorResponse(res, 403, "Guru bukan milik sekolah anda");
+    }
+
     const oldClass = await prisma.class.findFirst({
-      where: {
-        teacher_id: id,
-      },
+      where: { teacher_id: id },
     });
 
     if (oldClass) {
@@ -367,21 +368,29 @@ export const deleteTeacher = async (req, res) => {
   const { id } = req.params;
 
   try {
+    const user = req.user;
+    const institution = await prisma.institution.findFirst({
+      where: { user_id: user.id },
+    });
+    if (!institution) {
+      return errorResponse(res, 404, "Institusi tidak ditemukan");
+    }
+
     const existingTeacher = await prisma.teacher.findFirst({
-      where: {
-        id,
-      },
+      where: { id },
     });
 
     if (!existingTeacher) {
       return errorResponse(res, 404, "Guru tidak ditemukan");
     }
 
+    if (existingTeacher.school_id !== institution.id) {
+      return errorResponse(res, 403, "Guru bukan milik sekolah anda");
+    }
+
     if (existingTeacher.user_id) {
       await prisma.user.delete({
-        where: {
-          id: existingTeacher.user_id,
-        },
+        where: { id: existingTeacher.user_id },
       });
     }
 
