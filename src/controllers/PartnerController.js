@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { errorResponse, successResponse } from "../helpers/ResponseHelper.js";
+import { getInstitutionByUser } from "../helpers/InstitutionHelper.js";
 
 const prisma = new PrismaClient();
 
@@ -11,9 +12,7 @@ export const getPartners = async (req, res) => {
 
   try {
     const user = req.user;
-    const institution = await prisma.institution.findUnique({
-      where: { user_id: user.id },
-    });
+    const institution = await getInstitutionByUser(user.id, user.role);
 
     if (!institution) return errorResponse(res, null, "Institution not found");
 
@@ -76,9 +75,7 @@ export const addPartners = async (req, res) => {
       );
     }
 
-    const institution = await prisma.institution.findUnique({
-      where: { user_id: user.id },
-    });
+    const institution = await getInstitutionByUser(user.id, user.role);
 
     if (!institution) return errorResponse(res, null, "Institution not found");
 

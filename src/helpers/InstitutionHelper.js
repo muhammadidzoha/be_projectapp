@@ -9,6 +9,13 @@ export const getInstitutionByUser = async (userId, role) => {
     });
     return teacher?.institution || null;
   }
+  if (role === "staff") {
+    const staff = await prisma.staff.findFirst({
+      where: { user_id: userId },
+      include: { institution: true },
+    });
+    return staff?.institution || null;
+  }
   return prisma.institution.findFirst({
     where: { user_id: userId },
   });
