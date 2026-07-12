@@ -620,6 +620,11 @@ export const createFamilyMember = async (req, res) => {
           });
         }
 
+        if (!nis || !schoolId) {
+          results.push({ error: "NIS dan sekolah harus diisi", member });
+          continue;
+        }
+
         const existingStudent = await prisma.student.findUnique({
           where: { nis },
         });
