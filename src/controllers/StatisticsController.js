@@ -261,15 +261,28 @@ export const getParentDashboardSummary = async (req, res) => {
       const parentResponses = await prisma.response.findMany({
         where: { familyMemberId: parent.id },
         include: { quesioner: true },
+        orderBy: { created_at: "desc" },
       });
 
-      answeredQuestionnaires = parentResponses.length;
+      const answeredQuesionerIds = [
+        ...new Set(parentResponses.map((r) => r.quisionerId)),
+      ];
+
+      answeredQuestionnaires = answeredQuesionerIds.length;
+
       questionnaireProgress =
         totalQuestionnaires > 0
           ? Math.round((answeredQuestionnaires / totalQuestionnaires) * 100)
           : 0;
 
+      const latestPerQuesioner = new Map();
       for (const r of parentResponses) {
+        if (!latestPerQuesioner.has(r.quisionerId)) {
+          latestPerQuesioner.set(r.quisionerId, r);
+        }
+      }
+
+      for (const r of latestPerQuesioner.values()) {
         const threshold = QUESTIONNAIRE_THRESHOLDS[r.quesioner.title];
         if (threshold) {
           questionnaireResults.push({
@@ -452,6 +465,42 @@ export const getSchoolDashboardSummary = async (req, res) => {
       ([displayName, total]) => ({ displayName, total }),
     );
 
+    const schoolStudents = await prisma.familyMember.findMany({
+      where: { student: { schoolId: institutionId }, relation: "ANAK" },
+      select: {
+        id: true,
+        fullName: true,
+        student: {
+          select: { class: { select: { id: true, name: true } } },
+        },
+        nutrition: {
+          select: {
+            measurementDate: true,
+            height: true,
+            weight: true,
+            bmi: true,
+            nutritionStatus: { select: { displayName: true } },
+            monitoringPeriod: { select: { label: true } },
+          },
+          orderBy: { measurementDate: "asc" },
+        },
+      },
+    });
+
+    const childrenNutritionHistory = schoolStudents.map((s) => ({
+      childId: s.id,
+      childName: s.fullName,
+      className: s.student?.class?.name ?? null,
+      measurements: s.nutrition.map((n) => ({
+        period: n.monitoringPeriod?.label ?? "-",
+        measurementDate: n.measurementDate,
+        height: n.height,
+        weight: n.weight,
+        bmi: n.bmi,
+        nutritionStatus: n.nutritionStatus?.displayName ?? null,
+      })),
+    }));
+
     const classGroups = await prisma.student.groupBy({
       by: ["classId"],
       where: { schoolId: institutionId },
@@ -482,6 +531,7 @@ export const getSchoolDashboardSummary = async (req, res) => {
           institutionId,
           quisionerId: schoolQuesioner.id,
         },
+        orderBy: { created_at: "desc" },
       });
 
       if (response) {
@@ -531,6 +581,7 @@ export const getSchoolDashboardSummary = async (req, res) => {
         questionnaireProgress,
         questionnaireResult,
         schoolConclusion,
+        childrenNutritionHistory,
       },
       "School dashboard summary retrieved successfully",
     );
