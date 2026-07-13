@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE `nutritions` MODIFY `measurementDate` TIMESTAMP(2) NOT NULL DEFAULT CURRENT_TIMESTAMP(2);

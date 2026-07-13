@@ -1,6 +1,10 @@
 import { PrismaClient } from "@prisma/client";
 import { errorResponse, successResponse } from "../helpers/ResponseHelper.js";
 import { getInstitutionByUser } from "../helpers/InstitutionHelper.js";
+import {
+  getOrCreateCurrentPeriod,
+  getPeriodLabelShort,
+} from "../helpers/MonitoringHelper.js";
 
 const prisma = new PrismaClient();
 
@@ -141,12 +145,26 @@ export const createResponseQuesioner = async (req, res) => {
       return errorResponse(res, 404, "Family member not found");
     }
 
+    let periodLabel = null;
+    if (user.role === "school") {
+      periodLabel = getPeriodLabelShort(new Date());
+    } else {
+      const family = await prisma.family.findFirst({
+        where: { userId: user.id },
+      });
+      if (family) {
+        const period = await getOrCreateCurrentPeriod(family.id);
+        periodLabel = period.label;
+      }
+    }
+
     const responseRecord = await prisma.response.create({
       data: {
         quisionerId: Number(id),
         totalScore: 0,
         familyMemberId: familyMember.id,
         institutionId: null,
+        periodLabel,
       },
     });
 
@@ -270,7 +288,19 @@ export const checkAnsweredQuesioner = async (req, res) => {
       where: { responseId: response.id },
     });
 
-    return res.json({ answered: totalAnswers === totalQuestions });
+    const hasExisting = totalAnswers > 0;
+    return res.json({
+      answered: hasExisting && totalAnswers === totalQuestions,
+      canRefill: true,
+      lastResponse: hasExisting
+        ? {
+            id: response.id,
+            date: response.created_at,
+            totalScore: response.totalScore,
+          }
+        : null,
+      periodLabel: response?.periodLabel ?? null,
+    });
   } catch (error) {
     return errorResponse(res, error, "Failed to check answered status");
   }
@@ -430,12 +460,15 @@ export const createResponseQuesionerInstitution = async (req, res) => {
       return errorResponse(res, 404, "Institution not found");
     }
 
+    const periodLabel = getPeriodLabelShort(new Date());
+
     const responseRecord = await prisma.response.create({
       data: {
         quisionerId: Number(id),
         totalScore: 0,
         familyMemberId: null,
         institutionId: institution.id,
+        periodLabel,
       },
     });
 
@@ -528,7 +561,19 @@ export const checkAnsweredQuesionerInstitution = async (req, res) => {
       where: { responseId: response.id },
     });
 
-    return res.json({ answered: totalAnswers === totalQuestions });
+    const hasExisting = totalAnswers > 0;
+    return res.json({
+      answered: hasExisting && totalAnswers === totalQuestions,
+      canRefill: true,
+      lastResponse: hasExisting
+        ? {
+            id: response.id,
+            date: response.created_at,
+            totalScore: response.totalScore,
+          }
+        : null,
+      periodLabel: response?.periodLabel ?? null,
+    });
   } catch (error) {
     return errorResponse(res, error, "Failed to check answered status");
   }
