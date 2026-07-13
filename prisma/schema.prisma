@@ -400,7 +400,7 @@ model Response {
   totalScore     Int?     @default(0) @db.Int
   familyMemberId String?  @db.VarChar(255)
   institutionId  Int?     @db.Int
-  periodLabel    String?  @db.VarChar(7)
+  periodLabel    String?  @db.VarChar(191)
 
   quesioner    Quesioner     @relation("QuesionerResponse", fields: [quisionerId], references: [id], onDelete: Cascade)
   answers      Answer[]      @relation("ResponseAnswers")

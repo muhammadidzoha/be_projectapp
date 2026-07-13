@@ -259,6 +259,12 @@ export const getStudentByUser = async (req, res) => {
                 displayName: true,
               },
             },
+            measurementDate: true,
+            monitoringPeriod: {
+              select: {
+                label: true,
+              }
+            }
           },
         },
         student: {

@@ -42,6 +42,9 @@ export const getResponseQuesioner = async (req, res) => {
         familyMemberId: familyMember.id,
         quisionerId: id,
       },
+      orderBy: {
+        id: "desc",
+      },
     });
 
     if (!response) {
@@ -265,6 +268,9 @@ export const checkAnsweredQuesioner = async (req, res) => {
         familyMemberId: familyMember.id,
         quisionerId: id,
       },
+      orderBy: {
+        id: "desc",
+      },
       include: {
         answers: true,
       },
@@ -368,6 +374,9 @@ export const getResponseQuesionerInstitution = async (req, res) => {
       where: {
         institutionId: institution.id,
         quisionerId: quesionerId,
+      },
+      orderBy: {
+        id: "desc",
       },
     });
 
@@ -549,6 +558,9 @@ export const checkAnsweredQuesionerInstitution = async (req, res) => {
         institutionId: institution.id,
         quisionerId: quesionerId,
       },
+      orderBy: {
+        id: "desc",
+      },
     });
 
     if (!response) return res.json({ answered: false });
@@ -576,6 +588,61 @@ export const checkAnsweredQuesionerInstitution = async (req, res) => {
     });
   } catch (error) {
     return errorResponse(res, error, "Failed to check answered status");
+  }
+};
+
+export const getResponseHistory = async (req, res) => {
+  try {
+    const user = req.user;
+    const id = Number(req.params.id);
+
+    const family = await prisma.family.findFirst({
+      where: { userId: user.id },
+    });
+
+    if (!family) return errorResponse(res, 404, "Family not found");
+
+    const familyMember = await prisma.familyMember.findFirst({
+      where: {
+        familyId: family.id,
+        OR: [{ relation: "IBU" }, { relation: "AYAH" }],
+      },
+    });
+
+    if (!familyMember)
+      return errorResponse(res, 404, "Family member not found");
+
+    const responses = await prisma.response.findMany({
+      where: {
+        familyMemberId: familyMember.id,
+        quisionerId: id,
+      },
+      orderBy: { id: "desc" },
+      include: {
+        answers: {
+          orderBy: { id: "asc" },
+        },
+      },
+    });
+
+    const questions = await prisma.question.findMany({
+      where: { quesioner_id: id },
+      select: {
+        id: true,
+        title: true,
+        type: true,
+        options: { select: { id: true, title: true, score: true } },
+      },
+      orderBy: { id: "asc" },
+    });
+
+    return successResponse(
+      res,
+      { responses, questions },
+      "Berhasil mendapatkan riwayat",
+    );
+  } catch (error) {
+    return errorResponse(res, error, "Failed to get response history");
   }
 };
 
@@ -690,6 +757,49 @@ export const showResponseForParent = async (req, res) => {
     );
   } catch (error) {
     return errorResponse(res, error, "Failed to get response");
+  }
+};
+
+export const getResponseHistoryInstitution = async (req, res) => {
+  try {
+    const user = req.user;
+    const quesionerId = Number(req.params.id);
+
+    const institution = await getInstitutionByUser(user.id, user.role);
+
+    if (!institution) return errorResponse(res, 404, "Institution not found");
+
+    const responses = await prisma.response.findMany({
+      where: {
+        institutionId: institution.id,
+        quisionerId: quesionerId,
+      },
+      orderBy: { id: "desc" },
+      include: {
+        answers: {
+          orderBy: { id: "asc" },
+        },
+      },
+    });
+
+    const questions = await prisma.question.findMany({
+      where: { quesioner_id: quesionerId },
+      select: {
+        id: true,
+        title: true,
+        type: true,
+        options: { select: { id: true, title: true, score: true } },
+      },
+      orderBy: { id: "asc" },
+    });
+
+    return successResponse(
+      res,
+      { responses, questions },
+      "Berhasil mendapatkan riwayat",
+    );
+  } catch (error) {
+    return errorResponse(res, error, "Failed to get response history");
   }
 };
 
