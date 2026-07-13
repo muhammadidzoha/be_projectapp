@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { errorResponse, successResponse } from "../helpers/ResponseHelper.js";
+import { getOrCreateCurrentPeriod } from "../helpers/MonitoringHelper.js";
 
 const prisma = new PrismaClient();
 
@@ -113,12 +114,16 @@ export const getFamilyMemberByUser = async (req, res) => {
             height: true,
             weight: true,
             bmi: true,
+            measurementDate: true,
             nutritionStatus: {
               select: {
                 id: true,
                 information: true,
                 displayName: true,
               },
+            },
+            monitoringPeriod: {
+              select: { label: true },
             },
           },
         },
@@ -267,59 +272,6 @@ export const getParentsByFamilyMemberId = async (req, res) => {
   } catch (error) {
     return errorResponse(res, error, "Failed to retrieve parents");
   }
-
-  // try {
-  //   const anak = await prisma.familyMember.findFirst({
-  //     where: {
-  //       id,
-  //     },
-  //   });
-
-  //   if (!anak) {
-  //     return errorResponse(res, null, "Anak tidak ditemukan");
-  //   }
-
-  //   const familyId = anak.familyId;
-
-  //   const orangTua = await prisma.familyMember.findMany({
-  //     where: {
-  //       familyId: familyId,
-  //       relation: { in: ["AYAH", "IBU"] },
-  //     },
-  //     select: {
-  //       id: true,
-  //       fullName: true,
-  //       birthDate: true,
-  //       gender: true,
-  //       relation: true,
-  //       phone: true,
-  //       education: true,
-  //       job: {
-  //         select: {
-  //           id: true,
-  //           income: true,
-  //           jobType: {
-  //             select: {
-  //               id: true,
-  //               name: true,
-  //             },
-  //           },
-  //         },
-  //       },
-  //       residence: {
-  //         select: {
-  //           id: true,
-  //           status: true,
-  //           address: true,
-  //         },
-  //       },
-  //     },
-  //   });
-
-  //   return successResponse(res, orangTua, "Parent data successfully retrieved");
-  // } catch (error) {
-  //   return errorResponse(res, error, "Failed to retrieve family member");
-  // }
 };
 
 export const createFamilyMember = async (req, res) => {
@@ -653,32 +605,20 @@ export const createFamilyMember = async (req, res) => {
           });
         }
 
-        const existingNutrition = await prisma.nutrition.findFirst({
-          where: { familyMemberId: familyMember.id },
-        });
+        const period = await getOrCreateCurrentPeriod(familyByUser.id);
 
-        if (existingNutrition) {
-          nutrition = await prisma.nutrition.update({
-            where: { id: existingNutrition.id },
-            data: {
-              height: Number(height),
-              weight: Number(weight),
-              bmi: calculateBMI,
-              nutritionStatusId: nutritionStatusRecord.id,
-            },
-          });
-        } else {
-          nutrition = await prisma.nutrition.create({
-            data: {
-              height: Number(height),
-              weight: Number(weight),
-              bmi: calculateBMI,
-              nutritionStatusId: nutritionStatusRecord.id,
-              familyMemberId: familyMember.id,
-              createdBy: user.id,
-            },
-          });
-        }
+        nutrition = await prisma.nutrition.create({
+          data: {
+            height: Number(height),
+            weight: Number(weight),
+            bmi: calculateBMI,
+            nutritionStatusId: nutritionStatusRecord.id,
+            familyMemberId: familyMember.id,
+            createdBy: user.id,
+            measurementDate: new Date(),
+            monitoringPeriodId: period.id,
+          },
+        });
       } else {
         results.push({ error: "Invalid type", member });
         continue;
@@ -689,11 +629,7 @@ export const createFamilyMember = async (req, res) => {
 
     const errors = results.filter((r) => r.error);
     if (errors.length > 0) {
-      return errorResponse(
-        res,
-        { results, errors },
-        errors[0].error,
-      );
+      return errorResponse(res, { results, errors }, errors[0].error);
     }
 
     return successResponse(
@@ -741,10 +677,9 @@ export const updateFamilyMember = async (req, res) => {
       });
     }
 
-    if (
-      (height !== undefined || weight !== undefined) &&
-      familyMember.nutrition.length > 0
-    ) {
+    if (height !== undefined || weight !== undefined) {
+      const period = await getOrCreateCurrentPeriod(familyMember.familyId);
+
       let bmi, nutritionStatusId;
       if (height !== undefined && weight !== undefined) {
         const heightInMeters = Number(height) / 100;
@@ -790,16 +725,17 @@ export const updateFamilyMember = async (req, res) => {
         }
       }
 
-      const nutritionUpdateData = {
-        ...(height !== undefined && { height: Number(height) }),
-        ...(weight !== undefined && { weight: Number(weight) }),
-        ...(bmi !== undefined && { bmi }),
-        ...(nutritionStatusId && { nutritionStatusId }),
-      };
-
-      await prisma.nutrition.update({
-        where: { id: familyMember.nutrition[0].id },
-        data: nutritionUpdateData,
+      await prisma.nutrition.create({
+        data: {
+          ...(height !== undefined && { height: Number(height) }),
+          ...(weight !== undefined && { weight: Number(weight) }),
+          ...(bmi !== undefined && { bmi }),
+          ...(nutritionStatusId && { nutritionStatusId }),
+          familyMemberId: familyMember.id,
+          createdBy: req.user.id,
+          measurementDate: new Date(),
+          monitoringPeriodId: period.id,
+        },
       });
     }
 
@@ -838,6 +774,148 @@ export const updateFamilyMember = async (req, res) => {
     return successResponse(res, null, "Berhasil mengupdate anggota keluarga");
   } catch (error) {
     return errorResponse(res, error, "Gagal mengupdate anggota keluarga");
+  }
+};
+
+export const addMeasurement = async (req, res) => {
+  try {
+    const user = req.user;
+    const { id } = req.params;
+    const { height, weight, measurementDate } = req.body;
+
+    if (height === undefined || weight === undefined) {
+      return errorResponse(res, null, "Height and weight are required");
+    }
+
+    const familyMember = await prisma.familyMember.findUnique({
+      where: { id },
+      include: { family: true },
+    });
+
+    if (!familyMember) {
+      return errorResponse(res, null, "Family member not found");
+    }
+
+    if (familyMember.family.userId !== user.id && user.role !== "healthcare") {
+      return errorResponse(res, 403, "Unauthorized");
+    }
+
+    const period = await getOrCreateCurrentPeriod(familyMember.familyId);
+
+    const heightInMeters = Number(height) / 100;
+    const calculateBMI = Number(weight) / (heightInMeters * heightInMeters);
+
+    let nutritionStatusId = null;
+    if (familyMember.birthDate && familyMember.gender) {
+      const childBirthDate = new Date(familyMember.birthDate);
+      const today = new Date();
+      let ageMonths =
+        (today.getFullYear() - childBirthDate.getFullYear()) * 12 +
+        (today.getMonth() - childBirthDate.getMonth());
+      if (today.getDate() < childBirthDate.getDate()) ageMonths--;
+      const ageYear = Math.floor(ageMonths / 12);
+      const ageMonthRemainder = ageMonths % 12;
+
+      const bmiRef = await prisma.bmiReference.findFirst({
+        where: {
+          gender: familyMember.gender,
+          ageYear: ageYear,
+          ageMonthFrom: { lte: ageMonthRemainder },
+          ageMonthTo: { gte: ageMonthRemainder },
+        },
+      });
+
+      if (bmiRef) {
+        let nutritionStatusEnum;
+        if (calculateBMI < bmiRef.sdMinus2Min) {
+          nutritionStatusEnum = "GIZI_BURUK_KURANG";
+        } else if (calculateBMI > bmiRef.sdPlus1Max) {
+          nutritionStatusEnum = "OVERWEIGHT_OBESITAS";
+        } else {
+          nutritionStatusEnum = "GIZI_BAIK";
+        }
+
+        const statusRecord = await prisma.nutritionStatus.findFirst({
+          where: { status: nutritionStatusEnum },
+        });
+        nutritionStatusId = statusRecord?.id;
+      }
+    }
+
+    const nutrition = await prisma.nutrition.create({
+      data: {
+        height: Number(height),
+        weight: Number(weight),
+        bmi: calculateBMI,
+        nutritionStatusId,
+        familyMemberId: familyMember.id,
+        createdBy: user.id,
+        measurementDate: measurementDate
+          ? new Date(measurementDate)
+          : new Date(),
+        monitoringPeriodId: period.id,
+      },
+      include: {
+        nutritionStatus: { select: { displayName: true, information: true } },
+      },
+    });
+
+    return successResponse(res, nutrition, "Measurement added successfully");
+  } catch (error) {
+    return errorResponse(res, error, "Failed to add measurement");
+  }
+};
+
+export const getNutritionHistory = async (req, res) => {
+  try {
+    const user = req.user;
+    const { id } = req.params;
+
+    const familyMember = await prisma.familyMember.findUnique({
+      where: { id },
+      include: { family: true },
+    });
+
+    if (!familyMember) {
+      return errorResponse(res, null, "Family member not found");
+    }
+
+    const allowed =
+      familyMember.family.userId === user.id ||
+      user.role === "healthcare" ||
+      user.role === "school";
+    if (!allowed) {
+      return errorResponse(res, 403, "Unauthorized");
+    }
+
+    const history = await prisma.nutrition.findMany({
+      where: { familyMemberId: id },
+      orderBy: { measurementDate: "asc" },
+      include: {
+        nutritionStatus: { select: { displayName: true, information: true } },
+        monitoringPeriod: { select: { label: true } },
+      },
+    });
+
+    return successResponse(
+      res,
+      {
+        childId: id,
+        childName: familyMember.fullName,
+        history: history.map((n) => ({
+          id: n.id,
+          measurementDate: n.measurementDate,
+          height: n.height,
+          weight: n.weight,
+          bmi: n.bmi,
+          nutritionStatus: n.nutritionStatus?.displayName ?? null,
+          period: n.monitoringPeriod?.label ?? null,
+        })),
+      },
+      "Nutrition history retrieved successfully",
+    );
+  } catch (error) {
+    return errorResponse(res, error, "Failed to get nutrition history");
   }
 };
 

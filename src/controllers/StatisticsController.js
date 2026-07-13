@@ -214,13 +214,18 @@ export const getParentDashboardSummary = async (req, res) => {
         familyMember: {
           include: {
             nutrition: {
-              include: { nutritionStatus: true },
-              orderBy: { updatedAt: "desc" },
-              take: 1,
+              include: {
+                nutritionStatus: true,
+                monitoringPeriod: { select: { label: true } },
+              },
+              orderBy: { measurementDate: "asc" },
             },
             SocioEconomic: true,
             student: true,
           },
+        },
+        monitoringPeriods: {
+          orderBy: { startDate: "asc" },
         },
       },
     });
@@ -357,6 +362,27 @@ export const getParentDashboardSummary = async (req, res) => {
       }
     }
 
+    const childrenNutritionHistory = children.map((child) => ({
+      childId: child.id,
+      childName: child.fullName,
+      measurements: child.nutrition.map((n) => ({
+        period: n.monitoringPeriod?.label ?? "-",
+        measurementDate: n.measurementDate,
+        height: n.height,
+        weight: n.weight,
+        bmi: n.bmi,
+        nutritionStatus: n.nutritionStatus?.displayName ?? null,
+      })),
+    }));
+
+    const monitoringPeriods =
+      family.monitoringPeriods?.map((mp) => ({
+        id: mp.id,
+        label: mp.label,
+        startDate: mp.startDate,
+        endDate: mp.endDate,
+      })) ?? [];
+
     return successResponse(
       res,
       {
@@ -372,6 +398,8 @@ export const getParentDashboardSummary = async (req, res) => {
           latestNutrition?.nutritionStatus?.displayName ?? null,
         nutritionDistribution: nutritionDistArray,
         schoolHealthService,
+        childrenNutritionHistory,
+        monitoringPeriods,
       },
       "Dashboard summary retrieved successfully",
     );
@@ -408,6 +436,8 @@ export const getSchoolDashboardSummary = async (req, res) => {
       select: {
         nutrition: {
           select: { nutritionStatus: { select: { displayName: true } } },
+          orderBy: { createdAt: "desc" },
+          take: 1,
         },
       },
     });
@@ -457,8 +487,7 @@ export const getSchoolDashboardSummary = async (req, res) => {
       if (response) {
         questionnaireProgress = 100;
 
-        const interpretation =
-          response.totalScore >= 17 ? "Tinggi" : "Rendah";
+        const interpretation = response.totalScore >= 17 ? "Tinggi" : "Rendah";
 
         questionnaireResult = {
           title: schoolQuesioner.title,
@@ -471,9 +500,7 @@ export const getSchoolDashboardSummary = async (req, res) => {
             color: "from-emerald-500 to-teal-600",
             icon: "🏆",
             kategori: "Pelayanan Kesehatan Sekolah Baik",
-            saran: [
-              "Budayakan perilaku hidup sehat dalam lingkungan sekolah",
-            ],
+            saran: ["Budayakan perilaku hidup sehat dalam lingkungan sekolah"],
           };
         } else {
           schoolConclusion = {
