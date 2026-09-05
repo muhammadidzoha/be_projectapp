@@ -6,17 +6,14 @@
   "scripts": {
     "start": "node src/index.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "nodemon src/index.js"
-  },
-  "prisma": {
-    "seed": "node prisma/seed.js"
+    "dev": "nodemon src/index.js",
+    "seed": "node src/db/seed.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@prisma/client": "^6.8.2",
     "argon2": "^0.43.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
@@ -26,8 +23,5 @@
     "jsonwebtoken": "^9.0.2",
     "mysql2": "^3.14.0",
     "nodemon": "^3.1.10"
-  },
-  "devDependencies": {
-    "prisma": "^6.8.2"
   }
 }

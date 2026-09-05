@@ -1,10 +1,7 @@
-import { PrismaClient } from "@prisma/client";
+import pool from "../config/db.js";
 import { errorResponse, successResponse } from "../helpers/ResponseHelper.js";
 import { getInstitutionByUser } from "../helpers/InstitutionHelper.js";
-
-const prisma = new PrismaClient();
-
-// ---- constants for conclusion computation ----
+import { like } from "../utils/dbHelpers.js";
 
 const SOCIO_ECONOMIC_POINTS = {
   residence: { MILIK_SENDIRI: 3, MENYEWA: 2, BERSAMA_ORANG_TUA: 1 },
@@ -83,96 +80,120 @@ const computeConclusion = (
   return null;
 };
 
-// ---- existing controller functions ----
+const mapStudentRow = (row) => ({
+  id: row.id,
+  fullName: row.fullName,
+  familyId: row.familyId,
+  nutrition: row.n_id
+    ? {
+        id: row.n_id,
+        height: row.n_height,
+        weight: row.n_weight,
+        bmi: row.n_bmi,
+        nutritionStatus: row.ns_id
+          ? {
+              id: row.ns_id,
+              information: row.ns_information,
+              displayName: row.ns_displayName,
+            }
+          : null,
+        measurementDate: row.n_measurementDate,
+        monitoringPeriod: row.mp_label ? { label: row.mp_label } : null,
+      }
+    : null,
+  student: row.student_id
+    ? {
+        id: row.student_id,
+        nis: row.nis,
+        schoolYear: row.schoolYear,
+        semester: row.semester,
+        institution: row.st_inst_id
+          ? {
+              id: row.st_inst_id,
+              name: row.st_inst_name,
+              address: row.st_inst_address,
+              phone: row.st_inst_phone,
+              email: row.st_inst_email,
+              province: row.prov_id
+                ? { id: row.prov_id, name: row.prov_name }
+                : null,
+              city: row.city_id
+                ? { id: row.city_id, name: row.city_name }
+                : null,
+            }
+          : null,
+        class: row.class_id
+          ? {
+              id: row.class_id,
+              name: row.class_name,
+              teacher: row.teacher_id
+                ? {
+                    id: row.teacher_id,
+                    fullName: row.teacher_fullName,
+                    address: row.teacher_address,
+                    phone: row.teacher_phone,
+                  }
+                : null,
+            }
+          : null,
+      }
+    : null,
+});
+
+const studentSelectBase = `
+      fm.id, fm.fullName, fm.familyId,
+      n.id AS n_id, n.height AS n_height, n.weight AS n_weight, n.bmi AS n_bmi,
+      n.measurementDate AS n_measurementDate,
+      ns.id AS ns_id, ns.information AS ns_information, ns.displayName AS ns_displayName,
+      mp.label AS mp_label,
+      st.id AS student_id, st.nis, st.schoolYear, st.semester,
+      si.id AS st_inst_id, si.name AS st_inst_name, si.address AS st_inst_address,
+      si.phone AS st_inst_phone, si.email AS st_inst_email,
+      p.id AS prov_id, p.name AS prov_name,
+      ci.id AS city_id, ci.name AS city_name,
+      cl.id AS class_id, cl.name AS class_name,
+      t.id AS teacher_id, t.fullName AS teacher_fullName, t.address AS teacher_address, t.phone AS teacher_phone
+    `;
+
+const studentJoinBase = `
+      FROM family_members fm
+      LEFT JOIN students st ON st.familyMemberId = fm.id
+      LEFT JOIN institutions si ON si.id = st.schoolId
+      LEFT JOIN provinces p ON p.id = si.province_id
+      LEFT JOIN cities ci ON ci.id = si.city_id
+      LEFT JOIN classes cl ON cl.id = st.classId
+      LEFT JOIN teachers t ON t.id = cl.teacher_id
+      LEFT JOIN nutritions n ON n.id = (
+        SELECT n2.id FROM nutritions n2 WHERE n2.familyMemberId = fm.id ORDER BY n2.id DESC LIMIT 1
+      )
+      LEFT JOIN nutrition_status ns ON ns.id = n.nutritionStatusId
+      LEFT JOIN monitoring_periods mp ON mp.id = n.monitoringPeriodId
+    `;
 
 export const getStudents = async (req, res) => {
   const page = parseInt(req.query.page) || 0;
   const limit = parseInt(req.query.limit) || 10;
   const search = req.query.search || "";
   const offset = limit * page;
+  const searchLike = like(search);
 
   try {
-    const totalRows = await prisma.familyMember.count({
-      where: {
-        relation: "ANAK",
-        education: "SD",
-        fullName: {
-          contains: search,
-        },
-      },
-    });
-
+    const [[countRow]] = await pool.query(
+      "SELECT COUNT(*) AS total FROM family_members WHERE relation = 'ANAK' AND education = 'SD' AND fullName LIKE ?",
+      [searchLike],
+    );
+    const totalRows = countRow.total;
     const totalPage = Math.ceil(totalRows / limit);
-    const students = await prisma.familyMember.findMany({
-      where: {
-        relation: "ANAK",
-        education: "SD",
-        fullName: {
-          contains: search,
-        },
-      },
-      select: {
-        id: true,
-        fullName: true,
-        nutrition: {
-          select: {
-            id: true,
-            height: true,
-            weight: true,
-            bmi: true,
-            nutritionStatus: {
-              select: {
-                id: true,
-                information: true,
-                displayName: true,
-              },
-            },
-          },
-        },
-        student: {
-          select: {
-            id: true,
-            nis: true,
-            schoolYear: true,
-            semester: true,
-            institution: {
-              select: {
-                id: true,
-                name: true,
-                address: true,
-                phone: true,
-                email: true,
-                province: {
-                  select: { id: true, name: true },
-                },
-                city: {
-                  select: { id: true, name: true },
-                },
-              },
-            },
-            class: {
-              select: {
-                id: true,
-                name: true,
-                teacher: {
-                  select: {
-                    id: true,
-                    fullName: true,
-                    address: true,
-                    phone: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-      skip: offset,
-      take: limit,
-      orderBy: {
-        id: "asc",
-      },
-    });
+
+    const [rows] = await pool.query(
+      `SELECT ${studentSelectBase}
+       ${studentJoinBase}
+       WHERE fm.relation = 'ANAK' AND fm.education = 'SD' AND fm.fullName LIKE ?
+       ORDER BY fm.id ASC LIMIT ? OFFSET ?`,
+      [searchLike, limit, offset],
+    );
+
+    const students = rows.map(mapStudentRow);
 
     return successResponse(
       res,
@@ -190,6 +211,7 @@ export const getStudentByUser = async (req, res) => {
   const search = req.query.search || "";
   const offset = limit * page;
   const filteredClass = req.query.class || "";
+  const searchLike = like(search);
 
   try {
     const user = req.user;
@@ -202,125 +224,47 @@ export const getStudentByUser = async (req, res) => {
     }
 
     const institution = await getInstitutionByUser(user.id, user.role);
-
     if (!institution) {
       return errorResponse(res, 404, "Institution not found for this user");
     }
 
-    const totalRows = await prisma.familyMember.count({
-      where: {
-        fullName: {
-          contains: search,
-        },
-        student: {
-          institution: {
-            id: institution.id,
-          },
-          ...(filteredClass && {
-            class: {
-              name: filteredClass,
-            },
-          }),
-        },
-      },
-    });
+    const classFilterSql = filteredClass ? " AND cl.name = ?" : "";
 
+    const [[countRow]] = await pool.query(
+      `SELECT COUNT(*) AS total
+       FROM family_members fm
+       JOIN students st ON st.familyMemberId = fm.id
+       LEFT JOIN classes cl ON cl.id = st.classId
+       WHERE st.schoolId = ? AND fm.fullName LIKE ?${classFilterSql}`,
+      filteredClass
+        ? [institution.id, searchLike, filteredClass]
+        : [institution.id, searchLike],
+    );
+    const totalRows = countRow.total;
     const totalPage = Math.ceil(totalRows / limit);
-    const students = await prisma.familyMember.findMany({
-      where: {
-        fullName: {
-          contains: search,
-        },
-        student: {
-          institution: {
-            id: institution.id,
-          },
-          ...(filteredClass && {
-            class: {
-              name: filteredClass,
-            },
-          }),
-        },
-      },
-      select: {
-        id: true,
-        fullName: true,
-        familyId: true,
-        nutrition: {
-          select: {
-            id: true,
-            height: true,
-            weight: true,
-            bmi: true,
-            nutritionStatus: {
-              select: {
-                id: true,
-                information: true,
-                displayName: true,
-              },
-            },
-            measurementDate: true,
-            monitoringPeriod: {
-              select: {
-                label: true,
-              }
-            }
-          },
-        },
-        student: {
-          select: {
-            id: true,
-            nis: true,
-            schoolYear: true,
-            semester: true,
-            institution: {
-              select: {
-                id: true,
-                name: true,
-                address: true,
-                phone: true,
-                email: true,
-                province: {
-                  select: { id: true, name: true },
-                },
-                city: {
-                  select: { id: true, name: true },
-                },
-              },
-            },
-            class: {
-              select: {
-                id: true,
-                name: true,
-                teacher: {
-                  select: {
-                    id: true,
-                    fullName: true,
-                    address: true,
-                    phone: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-      skip: offset,
-      take: limit,
-      orderBy: {
-        id: "asc",
-      },
-    });
+
+    const [rows] = await pool.query(
+      `SELECT ${studentSelectBase}
+       ${studentJoinBase}
+       WHERE st.schoolId = ? AND fm.fullName LIKE ?${classFilterSql}
+       ORDER BY fm.id ASC LIMIT ? OFFSET ?`,
+      classFilterSql
+        ? [institution.id, searchLike, filteredClass, limit, offset]
+        : [institution.id, searchLike, limit, offset],
+    );
+
+    const students = rows.map(mapStudentRow);
 
     const studentIds = students.map((s) => s.student?.id).filter(Boolean);
 
     let activeRecStudentIds = new Set();
     let completedRecMap = {};
     if (studentIds.length > 0) {
-      const recs = await prisma.recommendation.findMany({
-        where: { studentId: { in: studentIds } },
-        select: { id: true, studentId: true, status: true },
-      });
+      const ph = studentIds.map(() => "?").join(",");
+      const [recs] = await pool.query(
+        `SELECT id, studentId, status FROM recommendations WHERE studentId IN (${ph})`,
+        studentIds,
+      );
       activeRecStudentIds = new Set(
         recs
           .filter((r) => r.status === "PENDING" || r.status === "PROCESSED")
@@ -333,7 +277,6 @@ export const getStudentByUser = async (req, res) => {
       }
     }
 
-    // Ganti mapping jadi tambah completedRecommendation:
     const studentsWithFlag = students.map((s) => ({
       ...s,
       isRecommending: s.student ? activeRecStudentIds.has(s.student.id) : false,
@@ -342,47 +285,60 @@ export const getStudentByUser = async (req, res) => {
         : null,
     }));
 
-    // ---- compute conclusion per student ----
-
     const familyIds = [
       ...new Set(studentsWithFlag.map((s) => s.familyId).filter(Boolean)),
     ];
 
     const familyConclusionMap = {};
     if (familyIds.length > 0) {
-      const families = await prisma.family.findMany({
-        where: { id: { in: familyIds } },
-        select: {
-          id: true,
-          familyMember: {
-            where: { relation: { in: ["AYAH", "IBU"] } },
-            select: {
-              education: true,
-              SocioEconomic: true,
-              Response: {
-                select: {
-                  totalScore: true,
-                  quesioner: { select: { title: true } },
-                },
-              },
-            },
-          },
-        },
+      const fph = familyIds.map(() => "?").join(",");
+      const [parents] = await pool.query(
+        `SELECT fm.familyId, fm.education AS fm_education,
+                se.residenceStatus, se.childrenCount, se.underFiveCount, se.familyIncomeLevel,
+                r.totalScore AS r_totalScore, q.title AS q_title
+         FROM family_members fm
+         LEFT JOIN socio_economic se ON se.id = fm.socioEconomicId
+         LEFT JOIN responses r ON r.familyMemberId = fm.id
+         LEFT JOIN quesioners q ON q.id = r.quisionerId
+         WHERE fm.familyId IN (${fph}) AND (fm.relation = 'AYAH' OR fm.relation = 'IBU')`,
+        familyIds,
+      );
+
+      const perFamily = {};
+      parents.forEach((p) => {
+        if (!perFamily[p.familyId]) {
+          perFamily[p.familyId] = {
+            education: p.fm_education,
+            SocioEconomic: p.residenceStatus
+              ? {
+                  residenceStatus: p.residenceStatus,
+                  childrenCount: p.childrenCount,
+                  underFiveCount: p.underFiveCount,
+                  familyIncomeLevel: p.familyIncomeLevel,
+                }
+              : null,
+            responses: [],
+          };
+        }
+        if (p.r_totalScore != null) {
+          perFamily[p.familyId].responses.push({
+            quesioner: { title: p.q_title },
+            totalScore: p.r_totalScore,
+          });
+        }
       });
 
-      for (const fam of families) {
-        const parent = fam.familyMember[0];
+      for (const famId of familyIds) {
+        const parent = perFamily[famId];
         if (!parent) {
-          familyConclusionMap[fam.id] = null;
+          familyConclusionMap[famId] = null;
           continue;
         }
-
         const qMap = {};
-        for (const r of parent.Response || []) {
-          qMap[r.quesioner.title] = r.totalScore;
+        for (const r of parent.responses || []) {
+          qMap[r.quesioner?.title] = r.totalScore;
         }
-
-        familyConclusionMap[fam.id] = {
+        familyConclusionMap[famId] = {
           socioEconomicInterpretation: computeSocioEconomicInterpretation(
             parent.SocioEconomic,
           ),
@@ -393,19 +349,17 @@ export const getStudentByUser = async (req, res) => {
       }
     }
 
-    // School health service (same for all students in this school)
     let schoolHealthInterpretation = "Rendah";
-    const healthQuesioner = await prisma.quesioner.findFirst({
-      where: { title: "Pelayanan Kesehatan Sekolah" },
-    });
+    const [healthQ] = await pool.query(
+      "SELECT * FROM quesioners WHERE title = 'Pelayanan Kesehatan Sekolah' LIMIT 1",
+    );
+    const healthQuesioner = healthQ[0];
     if (healthQuesioner) {
-      const healthResponse = await prisma.response.findFirst({
-        where: {
-          institutionId: institution.id,
-          quisionerId: healthQuesioner.id,
-        },
-        orderBy: { created_at: "desc" },
-      });
+      const [hRows] = await pool.query(
+        "SELECT * FROM responses WHERE institutionId = ? AND quisionerId = ? ORDER BY created_at DESC LIMIT 1",
+        [institution.id, healthQuesioner.id],
+      );
+      const healthResponse = hRows[0];
       if (
         healthResponse &&
         (healthResponse.totalScore ?? 0) >= SCHOOL_HEALTH_THRESHOLD
@@ -415,7 +369,7 @@ export const getStudentByUser = async (req, res) => {
     }
 
     const studentsWithConclusion = studentsWithFlag.map((s) => {
-      const nutritionStatus = s.nutrition?.[0]?.nutritionStatus?.displayName;
+      const nutritionStatus = s.nutrition?.nutritionStatus?.displayName;
       const conclusion = computeConclusion(
         nutritionStatus,
         familyConclusionMap[s.familyId],

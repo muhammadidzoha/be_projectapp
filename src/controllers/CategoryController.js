@@ -1,7 +1,6 @@
-import { PrismaClient } from "@prisma/client";
+import pool from "../config/db.js";
 import { errorResponse, successResponse } from "../helpers/ResponseHelper.js";
-
-const prisma = new PrismaClient();
+import { like } from "../utils/dbHelpers.js";
 
 export const getCategory = async (req, res) => {
   const page = parseInt(req.query.page) || 0;
@@ -10,37 +9,22 @@ export const getCategory = async (req, res) => {
   const offset = limit * page;
 
   try {
-    const totalRows = await prisma.category.count({
-      where: {
-        name: {
-          contains: search,
-        },
-      },
-    });
-
+    const [[countRow]] = await pool.query(
+      "SELECT COUNT(*) AS total FROM categories WHERE name LIKE ?",
+      [like(search)],
+    );
+    const totalRows = countRow.total;
     const totalPage = Math.ceil(totalRows / limit);
-    const categories = await prisma.category.findMany({
-      where: {
-        name: {
-          contains: search,
-        },
-      },
-      select: {
-        id: true,
-        name: true,
-        path: true,
-      },
-      skip: offset,
-      take: limit,
-      orderBy: {
-        id: "asc",
-      },
-    });
+
+    const [categories] = await pool.query(
+      "SELECT id, name, path FROM categories WHERE name LIKE ? ORDER BY id ASC LIMIT ? OFFSET ?",
+      [like(search), limit, offset],
+    );
 
     return successResponse(
       res,
       { totalRows, totalPage, page, limit, categories },
-      "Categories retrieved successfully"
+      "Categories retrieved successfully",
     );
   } catch (error) {
     return errorResponse(res, error, "Internal server error");

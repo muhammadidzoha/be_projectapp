@@ -1,12 +1,39 @@
-import { PrismaClient } from "@prisma/client";
+import pool from "../config/db.js";
+import { randomUUID } from "node:crypto";
 import { errorResponse, successResponse } from "../helpers/ResponseHelper.js";
 import { getInstitutionByUser } from "../helpers/InstitutionHelper.js";
 import {
   getOrCreateCurrentPeriod,
   getPeriodLabelShort,
 } from "../helpers/MonitoringHelper.js";
+import { like } from "../utils/dbHelpers.js";
 
-const prisma = new PrismaClient();
+const selectQuestions = async (quesionerId, search = "") => {
+  const searchLike = like(search);
+  const [rows] = await pool.query(
+    `SELECT id, quesioner_id, title, type FROM questions WHERE quesioner_id = ? AND title LIKE ? ORDER BY id ASC`,
+    [quesionerId, searchLike],
+  );
+  if (!rows.length) return [];
+  const ids = rows.map((q) => q.id);
+  const placeholders = ids.map(() => "?").join(",");
+  const [optRows] = await pool.query(
+    `SELECT id, question_id, title, score FROM options WHERE question_id IN (${placeholders}) ORDER BY id ASC`,
+    ids,
+  );
+  const byQ = {};
+  for (const o of optRows) {
+    if (!byQ[o.question_id]) byQ[o.question_id] = [];
+    byQ[o.question_id].push({ id: o.id, title: o.title, score: o.score });
+  }
+  return rows.map((q) => ({
+    id: q.id,
+    quesioner_id: q.quesioner_id,
+    title: q.title,
+    type: q.type,
+    options: byQ[q.id] || [],
+  }));
+};
 
 export const getResponseQuesioner = async (req, res) => {
   try {
@@ -18,35 +45,29 @@ export const getResponseQuesioner = async (req, res) => {
     const search = req.query.search || "";
     const offset = limit * page;
 
-    const family = await prisma.family.findFirst({
-      where: { userId: user.id },
-    });
-
+    const [familyRows] = await pool.query(
+      "SELECT * FROM families WHERE userId = ? LIMIT 1",
+      [user.id],
+    );
+    const family = familyRows[0];
     if (!family) {
       return errorResponse(res, 404, "Family not found");
     }
 
-    const familyMember = await prisma.familyMember.findFirst({
-      where: {
-        familyId: family.id,
-        OR: [{ relation: "IBU" }, { relation: "AYAH" }],
-      },
-    });
-
+    const [fmRows] = await pool.query(
+      `SELECT * FROM family_members WHERE familyId = ? AND (relation = 'IBU' OR relation = 'AYAH') LIMIT 1`,
+      [family.id],
+    );
+    const familyMember = fmRows[0];
     if (!familyMember) {
       return errorResponse(res, 404, "Family member not found");
     }
 
-    const response = await prisma.response.findFirst({
-      where: {
-        familyMemberId: familyMember.id,
-        quisionerId: id,
-      },
-      orderBy: {
-        id: "desc",
-      },
-    });
-
+    const [respRows] = await pool.query(
+      `SELECT * FROM responses WHERE familyMemberId = ? AND quisionerId = ? ORDER BY id DESC LIMIT 1`,
+      [familyMember.id, id],
+    );
+    const response = respRows[0];
     if (!response) {
       return res.json({
         totalRows: 0,
@@ -58,42 +79,32 @@ export const getResponseQuesioner = async (req, res) => {
       });
     }
 
-    const totalRows = await prisma.question.count({
-      where: {
-        quesioner_id: id,
-        title: { contains: search },
-      },
-    });
-
+    const searchLike = like(search);
+    const [[countRow]] = await pool.query(
+      "SELECT COUNT(*) AS total FROM questions WHERE quesioner_id = ? AND title LIKE ?",
+      [id, searchLike],
+    );
+    const totalRows = countRow.total;
     const totalPage = Math.ceil(totalRows / limit);
 
-    const questions = await prisma.question.findMany({
-      where: {
-        quesioner_id: id,
-        title: { contains: search },
-      },
-      select: {
-        id: true,
-        quesioner_id: true,
-        title: true,
-        type: true,
-        options: {
-          select: { id: true, title: true, score: true },
-        },
-      },
-      skip: offset,
-      take: limit,
-    });
+    const [qRows] = await pool.query(
+      "SELECT id, quesioner_id, title, type FROM questions WHERE quesioner_id = ? AND title LIKE ? LIMIT ? OFFSET ?",
+      [id, searchLike, limit, offset],
+    );
+    const questions = await selectQuestions(id, search).then((all) =>
+      qRows.map((q) => all.find((x) => x.id === q.id)),
+    );
 
-    const questionIds = questions.map((q) => q.id);
-
-    const answers = await prisma.answer.findMany({
-      where: {
-        responseId: response.id,
-        questionId: { in: questionIds },
-      },
-      orderBy: { id: "asc" },
-    });
+    const questionIds = qRows.map((q) => q.id);
+    let answers = [];
+    if (questionIds.length) {
+      const qph = questionIds.map(() => "?").join(",");
+      const [aRows] = await pool.query(
+        `SELECT * FROM answers WHERE responseId = ? AND questionId IN (${qph}) ORDER BY id ASC`,
+        [response.id, ...questionIds],
+      );
+      answers = aRows;
+    }
 
     return successResponse(
       res,
@@ -103,6 +114,20 @@ export const getResponseQuesioner = async (req, res) => {
   } catch (error) {
     return errorResponse(res, error, "Failed to get response");
   }
+};
+
+const getFamilyMemberForParent = async (userId) => {
+  const [familyRows] = await pool.query(
+    "SELECT * FROM families WHERE userId = ? LIMIT 1",
+    [userId],
+  );
+  const family = familyRows[0];
+  if (!family) return { family: null, familyMember: null };
+  const [fmRows] = await pool.query(
+    `SELECT * FROM family_members WHERE familyId = ? AND (relation = 'IBU' OR relation = 'AYAH') LIMIT 1`,
+    [family.id],
+  );
+  return { family, familyMember: fmRows[0] || null };
 };
 
 export const createResponseQuesioner = async (req, res) => {
@@ -120,30 +145,10 @@ export const createResponseQuesioner = async (req, res) => {
       return errorResponse(res, 400, "Data must be an array in 'answers'");
     }
 
-    const family = await prisma.family.findFirst({
-      where: {
-        userId: user.id,
-      },
-    });
-
+    const { family, familyMember } = await getFamilyMemberForParent(user.id);
     if (!family) {
       return errorResponse(res, 404, "Family not found");
     }
-
-    const familyMember = await prisma.familyMember.findFirst({
-      where: {
-        familyId: family.id,
-        OR: [
-          {
-            relation: "IBU",
-          },
-          {
-            relation: "AYAH",
-          },
-        ],
-      },
-    });
-
     if (!familyMember) {
       return errorResponse(res, 404, "Family member not found");
     }
@@ -152,28 +157,21 @@ export const createResponseQuesioner = async (req, res) => {
     if (user.role === "school") {
       periodLabel = getPeriodLabelShort(new Date());
     } else {
-      const family = await prisma.family.findFirst({
-        where: { userId: user.id },
-      });
       if (family) {
         const period = await getOrCreateCurrentPeriod(family.id);
         periodLabel = period.label;
       }
     }
 
-    const responseRecord = await prisma.response.create({
-      data: {
-        quisionerId: Number(id),
-        totalScore: 0,
-        familyMemberId: familyMember.id,
-        institutionId: null,
-        periodLabel,
-      },
-    });
+    const responseRecordId = randomUUID();
+    await pool.query(
+      "INSERT INTO responses (id, quisionerId, totalScore, familyMemberId, institutionId, periodLabel, created_at) VALUES (?, ?, 0, ?, ?, ?, NOW())",
+      [responseRecordId, Number(id), familyMember.id, null, periodLabel],
+    );
 
     const sanitizedData = answers.map((item) => ({
       questionId: Number(item.questionId),
-      responseId: responseRecord.id,
+      responseId: responseRecordId,
       option_id: Number(item.option_id),
       score: Number(item.score),
       boolean_value: item.boolean_value ? Boolean(item.boolean_value) : null,
@@ -188,7 +186,6 @@ export const createResponseQuesioner = async (req, res) => {
       ) {
         return errorResponse(res, 400, "Invalid data format");
       }
-      // Field optional: hanya validasi jika ada
       if (
         item.boolean_value !== undefined &&
         item.boolean_value !== null &&
@@ -205,25 +202,48 @@ export const createResponseQuesioner = async (req, res) => {
       }
     }
 
-    const response = await prisma.answer.createMany({
-      data: sanitizedData,
-    });
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      for (const item of sanitizedData) {
+        await conn.query(
+          "INSERT INTO answers (questionId, responseId, option_id, score, boolean_value, scaleValue) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE score = VALUES(score), option_id = VALUES(option_id), boolean_value = VALUES(boolean_value), scaleValue = VALUES(scaleValue)",
+          [
+            item.questionId,
+            item.responseId,
+            item.option_id,
+            item.score,
+            item.boolean_value,
+            item.scaleValue,
+          ],
+        );
+      }
+      const totalScore = sanitizedData.reduce(
+        (sum, item) => sum + (item.score || 0),
+        0,
+      );
+      await conn.query(
+        "UPDATE responses SET totalScore = ? WHERE id = ?",
+        [totalScore, responseRecordId],
+      );
+      await conn.commit();
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
 
-    const HitungScore = sanitizedData.reduce(
-      (sum, item) => sum + (item.score || 0),
-      0,
+    const [countRows] = await pool.query(
+      "SELECT COUNT(*) AS total FROM answers WHERE responseId = ?",
+      [responseRecordId],
     );
 
-    await prisma.response.update({
-      where: {
-        id: responseRecord.id,
-      },
-      data: {
-        totalScore: HitungScore,
-      },
-    });
-
-    return successResponse(res, response, "Berhasil menjawab kuesioner");
+    return successResponse(
+      res,
+      { count: countRows[0].total },
+      "Berhasil menjawab kuesioner",
+    );
   } catch (error) {
     return errorResponse(
       res,
@@ -238,44 +258,15 @@ export const checkAnsweredQuesioner = async (req, res) => {
     const user = req.user;
     const id = Number(req.params.id);
 
-    const family = await prisma.family.findFirst({
-      where: {
-        userId: user.id,
-      },
-    });
-
+    const { family, familyMember } = await getFamilyMemberForParent(user.id);
     if (!family) return errorResponse(res, 404, "Family not found");
+    if (!familyMember) return errorResponse(res, 404, "Family member not found");
 
-    const familyMember = await prisma.familyMember.findFirst({
-      where: {
-        familyId: family.id,
-        OR: [
-          {
-            relation: "IBU",
-          },
-          {
-            relation: "AYAH",
-          },
-        ],
-      },
-    });
-
-    if (!familyMember)
-      return errorResponse(res, 404, "Family member not found");
-
-    const response = await prisma.response.findFirst({
-      where: {
-        familyMemberId: familyMember.id,
-        quisionerId: id,
-      },
-      orderBy: {
-        id: "desc",
-      },
-      include: {
-        answers: true,
-      },
-    });
-
+    const [respRows] = await pool.query(
+      "SELECT * FROM responses WHERE familyMemberId = ? AND quisionerId = ? ORDER BY id DESC LIMIT 1",
+      [familyMember.id, id],
+    );
+    const response = respRows[0];
     if (!response) {
       return res.json({
         answers: [],
@@ -286,13 +277,17 @@ export const checkAnsweredQuesioner = async (req, res) => {
       });
     }
 
-    const totalQuestions = await prisma.question.count({
-      where: { quesioner_id: id },
-    });
+    const [[qCountRow]] = await pool.query(
+      "SELECT COUNT(*) AS total FROM questions WHERE quesioner_id = ?",
+      [id],
+    );
+    const totalQuestions = qCountRow.total;
 
-    const totalAnswers = await prisma.answer.count({
-      where: { responseId: response.id },
-    });
+    const [[aCountRow]] = await pool.query(
+      "SELECT COUNT(*) AS total FROM answers WHERE responseId = ?",
+      [response.id],
+    );
+    const totalAnswers = aCountRow.total;
 
     const hasExisting = totalAnswers > 0;
     return res.json({
@@ -317,38 +312,32 @@ export const updateResponseQuesioner = async (req, res) => {
     const id = Number(req.params.id);
     const { option_id, boolean_value, scaleValue, score } = req.body;
 
-    const updateResponse = await prisma.answer.update({
-      where: {
+    await pool.query(
+      "UPDATE answers SET option_id = ?, boolean_value = ?, scaleValue = ?, score = ? WHERE id = ?",
+      [
+        Number(option_id),
+        boolean_value === undefined || boolean_value === null
+          ? null
+          : Boolean(boolean_value),
+        Number(scaleValue),
+        Number(score),
         id,
-      },
-      data: {
-        option_id: Number(option_id),
-        boolean_value:
-          boolean_value === undefined || boolean_value === null
-            ? null
-            : Boolean(boolean_value),
-        scaleValue: Number(scaleValue),
-        score: Number(score),
-      },
-    });
+      ],
+    );
 
-    const answer = await prisma.answer.findFirst({
-      where: { id },
-    });
+    const [aRows] = await pool.query("SELECT * FROM answers WHERE id = ?", [id]);
+    const answer = aRows[0];
 
-    const totalScore = await prisma.answer.aggregate({
-      where: {
-        responseId: answer.responseId,
-      },
-      _sum: { score: true },
-    });
+    const [[sumRow]] = await pool.query(
+      "SELECT COALESCE(SUM(score),0) AS total FROM answers WHERE responseId = ?",
+      [answer.responseId],
+    );
+    await pool.query("UPDATE responses SET totalScore = ? WHERE id = ?", [
+      sumRow.total,
+      answer.responseId,
+    ]);
 
-    await prisma.response.update({
-      where: { id: answer.responseId },
-      data: { totalScore: totalScore._sum.score || 0 },
-    });
-
-    return successResponse(res, updateResponse, "Berhasil mengupdate jawaban");
+    return successResponse(res, answer, "Berhasil mengupdate jawaban");
   } catch (error) {
     return errorResponse(res, error, "Failed to update response");
   }
@@ -365,21 +354,15 @@ export const getResponseQuesionerInstitution = async (req, res) => {
     const offset = limit * page;
 
     const institution = await getInstitutionByUser(user.id, user.role);
-
     if (!institution) {
       return errorResponse(res, 404, "Institution not found");
     }
 
-    const response = await prisma.response.findFirst({
-      where: {
-        institutionId: institution.id,
-        quisionerId: quesionerId,
-      },
-      orderBy: {
-        id: "desc",
-      },
-    });
-
+    const [respRows] = await pool.query(
+      "SELECT * FROM responses WHERE institutionId = ? AND quisionerId = ? ORDER BY id DESC LIMIT 1",
+      [institution.id, quesionerId],
+    );
+    const response = respRows[0];
     if (!response) {
       return res.json({
         totalRows: 0,
@@ -391,53 +374,30 @@ export const getResponseQuesionerInstitution = async (req, res) => {
       });
     }
 
-    const questions = await prisma.question.findMany({
-      where: {
-        quesioner_id: quesionerId,
-        title: {
-          contains: search,
-        },
-      },
-      select: {
-        id: true,
-        quesioner_id: true,
-        title: true,
-        type: true,
-        options: {
-          select: {
-            id: true,
-            title: true,
-            score: true,
-          },
-        },
-      },
-    });
+    const searchLike = like(search);
+    const [qRows] = await pool.query(
+      "SELECT id, quesioner_id, title, type FROM questions WHERE quesioner_id = ? AND title LIKE ? ORDER BY id ASC",
+      [quesionerId, searchLike],
+    );
+    const questions = await selectQuestions(quesionerId, search);
+    const questionIds = qRows.map((q) => q.id);
 
-    const questionIds = questions.map((q) => q.id);
-
-    const totalRows = await prisma.answer.count({
-      where: {
-        responseId: response.id,
-        questionId: {
-          in: questionIds,
-        },
-      },
-    });
-
+    let totalRows = 0;
+    let answers = [];
+    if (questionIds.length) {
+      const qph = questionIds.map(() => "?").join(",");
+      const [[cRow]] = await pool.query(
+        `SELECT COUNT(*) AS total FROM answers WHERE responseId = ? AND questionId IN (${qph})`,
+        [response.id, ...questionIds],
+      );
+      totalRows = cRow.total;
+      const [aRows] = await pool.query(
+        `SELECT * FROM answers WHERE responseId = ? AND questionId IN (${qph}) ORDER BY id ASC LIMIT ? OFFSET ?`,
+        [response.id, ...questionIds, limit, offset],
+      );
+      answers = aRows;
+    }
     const totalPage = Math.ceil(totalRows / limit);
-    const answers = await prisma.answer.findMany({
-      where: {
-        responseId: response.id,
-        questionId: {
-          in: questionIds,
-        },
-      },
-      skip: offset,
-      take: limit,
-      orderBy: {
-        id: "asc",
-      },
-    });
 
     return successResponse(
       res,
@@ -449,10 +409,87 @@ export const getResponseQuesionerInstitution = async (req, res) => {
   }
 };
 
+const createResponseInstitution = async (req, res, institution, id, answers) => {
+  const periodLabel = getPeriodLabelShort(new Date());
+
+  const responseRecordId = randomUUID();
+  await pool.query(
+    "INSERT INTO responses (id, quisionerId, totalScore, familyMemberId, institutionId, periodLabel, created_at) VALUES (?, ?, 0, NULL, ?, ?, NOW())",
+    [responseRecordId, Number(id), institution.id, periodLabel],
+  );
+
+  const sanitizedData = answers.map((item) => ({
+    questionId: Number(item.questionId),
+    responseId: responseRecordId,
+    option_id: item.option_id !== undefined ? Number(item.option_id) : null,
+    score: Number(item.score),
+    boolean_value:
+      item.boolean_value !== undefined ? Boolean(item.boolean_value) : null,
+    scaleValue: item.scaleValue !== undefined ? Number(item.scaleValue) : null,
+  }));
+
+  for (const item of sanitizedData) {
+    if (
+      typeof item.questionId !== "number" ||
+      typeof item.responseId !== "string" ||
+      typeof item.score !== "number"
+    ) {
+      return errorResponse(res, 400, "Invalid data format");
+    }
+    if (
+      item.boolean_value !== undefined &&
+      item.boolean_value !== null &&
+      typeof item.boolean_value !== "boolean"
+    ) {
+      return errorResponse(res, 400, "Invalid boolean value format");
+    }
+    if (
+      item.scaleValue !== undefined &&
+      item.scaleValue !== null &&
+      typeof item.scaleValue !== "number"
+    ) {
+      return errorResponse(res, 400, "Invalid scale value format");
+    }
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    for (const item of sanitizedData) {
+      await conn.query(
+        "INSERT INTO answers (questionId, responseId, option_id, score, boolean_value, scaleValue) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE score = VALUES(score), option_id = VALUES(option_id), boolean_value = VALUES(boolean_value), scaleValue = VALUES(scaleValue)",
+        [
+          item.questionId,
+          item.responseId,
+          item.option_id,
+          item.score,
+          item.boolean_value,
+          item.scaleValue,
+        ],
+      );
+    }
+    const totalScore = sanitizedData.reduce(
+      (sum, item) => sum + (item.score || 0),
+      0,
+    );
+    await conn.query("UPDATE responses SET totalScore = ? WHERE id = ?", [
+      totalScore,
+      responseRecordId,
+    ]);
+    await conn.commit();
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
+
+  return { responseRecordId };
+};
+
 export const createResponseQuesionerInstitution = async (req, res) => {
   try {
     const user = req.user;
-
     if (!user) {
       return errorResponse(res, 401, "Unauthorized");
     }
@@ -464,77 +501,19 @@ export const createResponseQuesionerInstitution = async (req, res) => {
     }
 
     const institution = await getInstitutionByUser(user.id, user.role);
-
     if (!institution) {
       return errorResponse(res, 404, "Institution not found");
     }
 
-    const periodLabel = getPeriodLabelShort(new Date());
-
-    const responseRecord = await prisma.response.create({
-      data: {
-        quisionerId: Number(id),
-        totalScore: 0,
-        familyMemberId: null,
-        institutionId: institution.id,
-        periodLabel,
-      },
-    });
-
-    const sanitizedData = answers.map((item) => ({
-      questionId: Number(item.questionId),
-      responseId: responseRecord.id,
-      option_id: item.option_id !== undefined ? Number(item.option_id) : null,
-      score: Number(item.score),
-      boolean_value:
-        item.boolean_value !== undefined ? Boolean(item.boolean_value) : null,
-      scaleValue:
-        item.scaleValue !== undefined ? Number(item.scaleValue) : null,
-    }));
-
-    for (const item of sanitizedData) {
-      if (
-        typeof item.questionId !== "number" ||
-        typeof item.responseId !== "string" ||
-        typeof item.score !== "number"
-      ) {
-        return errorResponse(res, 400, "Invalid data format");
-      }
-      if (
-        item.boolean_value !== undefined &&
-        item.boolean_value !== null &&
-        typeof item.boolean_value !== "boolean"
-      ) {
-        return errorResponse(res, 400, "Invalid boolean value format");
-      }
-      if (
-        item.scaleValue !== undefined &&
-        item.scaleValue !== null &&
-        typeof item.scaleValue !== "number"
-      ) {
-        return errorResponse(res, 400, "Invalid scale value format");
-      }
-    }
-
-    const response = await prisma.answer.createMany({
-      data: sanitizedData,
-    });
-
-    const HitungScore = sanitizedData.reduce(
-      (sum, item) => sum + (item.score || 0),
-      0,
+    const { responseRecordId } = await createResponseInstitution(
+      req,
+      res,
+      institution,
+      id,
+      answers,
     );
 
-    await prisma.response.update({
-      where: {
-        id: responseRecord.id,
-      },
-      data: {
-        totalScore: HitungScore,
-      },
-    });
-
-    return successResponse(res, response, "Berhasil menjawab kuesioner");
+    return successResponse(res, { id: responseRecordId }, "Berhasil menjawab kuesioner");
   } catch (error) {
     return errorResponse(
       res,
@@ -550,28 +529,26 @@ export const checkAnsweredQuesionerInstitution = async (req, res) => {
     const quesionerId = Number(req.params.id);
 
     const institution = await getInstitutionByUser(user.id, user.role);
-
     if (!institution) return errorResponse(res, 404, "Institution not found");
 
-    const response = await prisma.response.findFirst({
-      where: {
-        institutionId: institution.id,
-        quisionerId: quesionerId,
-      },
-      orderBy: {
-        id: "desc",
-      },
-    });
-
+    const [respRows] = await pool.query(
+      "SELECT * FROM responses WHERE institutionId = ? AND quisionerId = ? ORDER BY id DESC LIMIT 1",
+      [institution.id, quesionerId],
+    );
+    const response = respRows[0];
     if (!response) return res.json({ answered: false });
 
-    const totalQuestions = await prisma.question.count({
-      where: { quesioner_id: quesionerId },
-    });
+    const [[qCountRow]] = await pool.query(
+      "SELECT COUNT(*) AS total FROM questions WHERE quesioner_id = ?",
+      [quesionerId],
+    );
+    const totalQuestions = qCountRow.total;
 
-    const totalAnswers = await prisma.answer.count({
-      where: { responseId: response.id },
-    });
+    const [[aCountRow]] = await pool.query(
+      "SELECT COUNT(*) AS total FROM answers WHERE responseId = ?",
+      [response.id],
+    );
+    const totalAnswers = aCountRow.total;
 
     const hasExisting = totalAnswers > 0;
     return res.json({
@@ -596,45 +573,25 @@ export const getResponseHistory = async (req, res) => {
     const user = req.user;
     const id = Number(req.params.id);
 
-    const family = await prisma.family.findFirst({
-      where: { userId: user.id },
-    });
-
+    const { family, familyMember } = await getFamilyMemberForParent(user.id);
     if (!family) return errorResponse(res, 404, "Family not found");
+    if (!familyMember) return errorResponse(res, 404, "Family member not found");
 
-    const familyMember = await prisma.familyMember.findFirst({
-      where: {
-        familyId: family.id,
-        OR: [{ relation: "IBU" }, { relation: "AYAH" }],
-      },
-    });
+    const [responses] = await pool.query(
+      `SELECT r.* FROM responses r
+       WHERE r.familyMemberId = ? AND r.quisionerId = ?
+       ORDER BY r.id DESC`,
+      [familyMember.id, id],
+    );
+    for (const r of responses) {
+      const [answers] = await pool.query(
+        "SELECT * FROM answers WHERE responseId = ? ORDER BY id ASC",
+        [r.id],
+      );
+      r.answers = answers;
+    }
 
-    if (!familyMember)
-      return errorResponse(res, 404, "Family member not found");
-
-    const responses = await prisma.response.findMany({
-      where: {
-        familyMemberId: familyMember.id,
-        quisionerId: id,
-      },
-      orderBy: { id: "desc" },
-      include: {
-        answers: {
-          orderBy: { id: "asc" },
-        },
-      },
-    });
-
-    const questions = await prisma.question.findMany({
-      where: { quesioner_id: id },
-      select: {
-        id: true,
-        title: true,
-        type: true,
-        options: { select: { id: true, title: true, score: true } },
-      },
-      orderBy: { id: "asc" },
-    });
+    const questions = await selectQuestions(id);
 
     return successResponse(
       res,
@@ -656,34 +613,20 @@ export const showResponseForParent = async (req, res) => {
     const search = req.query.search || "";
     const offset = limit * page;
 
-    const familyMember = await prisma.familyMember.findFirst({
-      where: {
-        familyId: userId,
-        OR: [
-          {
-            relation: "IBU",
-          },
-          {
-            relation: "AYAH",
-          },
-        ],
-      },
-    });
-
+    const [fmRows] = await pool.query(
+      `SELECT * FROM family_members WHERE familyId = ? AND (relation = 'IBU' OR relation = 'AYAH') LIMIT 1`,
+      [userId],
+    );
+    const familyMember = fmRows[0];
     if (!familyMember) {
       return errorResponse(res, 404, "Family member not found");
     }
 
-    const response = await prisma.response.findFirst({
-      where: {
-        familyMemberId: familyMember.id,
-        quisionerId: id,
-      },
-      include: {
-        answers: true,
-      },
-    });
-
+    const [respRows] = await pool.query(
+      "SELECT * FROM responses WHERE familyMemberId = ? AND quisionerId = ? ORDER BY id DESC LIMIT 1",
+      [familyMember.id, id],
+    );
+    const response = respRows[0];
     if (!response) {
       return res.json({
         totalRows: 0,
@@ -695,64 +638,34 @@ export const showResponseForParent = async (req, res) => {
       });
     }
 
-    const questions = await prisma.question.findMany({
-      where: {
-        quesioner_id: id,
-        title: {
-          contains: search,
-        },
-      },
-      select: {
-        id: true,
-        quesioner_id: true,
-        title: true,
-        type: true,
-        options: {
-          select: {
-            id: true,
-            title: true,
-            score: true,
-          },
-        },
-      },
-    });
+    const searchLike = like(search);
+    const [qRows] = await pool.query(
+      "SELECT id, quesioner_id, title, type FROM questions WHERE quesioner_id = ? AND title LIKE ? ORDER BY id ASC",
+      [id, searchLike],
+    );
+    const questionIds = qRows.map((q) => q.id);
+    const questions = await selectQuestions(id, search);
 
-    const questionIds = questions.map((q) => q.id);
-
-    const totalRows = await prisma.answer.count({
-      where: {
-        responseId: response.id,
-        questionId: {
-          in: questionIds,
-        },
-      },
-    });
-
+    let totalRows = 0;
+    let answers = [];
+    if (questionIds.length) {
+      const qph = questionIds.map(() => "?").join(",");
+      const [[cRow]] = await pool.query(
+        `SELECT COUNT(*) AS total FROM answers WHERE responseId = ? AND questionId IN (${qph})`,
+        [response.id, ...questionIds],
+      );
+      totalRows = cRow.total;
+      const [aRows] = await pool.query(
+        `SELECT * FROM answers WHERE responseId = ? AND questionId IN (${qph}) ORDER BY id ASC LIMIT ? OFFSET ?`,
+        [response.id, ...questionIds, limit, offset],
+      );
+      answers = aRows;
+    }
     const totalPage = Math.ceil(totalRows / limit);
-    const answers = await prisma.answer.findMany({
-      where: {
-        responseId: response.id,
-        questionId: {
-          in: questionIds,
-        },
-      },
-      skip: offset,
-      take: limit,
-      orderBy: {
-        id: "asc",
-      },
-    });
 
     return successResponse(
       res,
-      {
-        totalRows,
-        totalPage,
-        page,
-        limit,
-        questions,
-        answers,
-      },
+      { totalRows, totalPage, page, limit, questions, answers },
       "Berhasil mendapatkan data",
     );
   } catch (error) {
@@ -766,32 +679,23 @@ export const getResponseHistoryInstitution = async (req, res) => {
     const quesionerId = Number(req.params.id);
 
     const institution = await getInstitutionByUser(user.id, user.role);
-
     if (!institution) return errorResponse(res, 404, "Institution not found");
 
-    const responses = await prisma.response.findMany({
-      where: {
-        institutionId: institution.id,
-        quisionerId: quesionerId,
-      },
-      orderBy: { id: "desc" },
-      include: {
-        answers: {
-          orderBy: { id: "asc" },
-        },
-      },
-    });
+    const [responses] = await pool.query(
+      `SELECT r.* FROM responses r
+       WHERE r.institutionId = ? AND r.quisionerId = ?
+       ORDER BY r.id DESC`,
+      [institution.id, quesionerId],
+    );
+    for (const r of responses) {
+      const [answers] = await pool.query(
+        "SELECT * FROM answers WHERE responseId = ? ORDER BY id ASC",
+        [r.id],
+      );
+      r.answers = answers;
+    }
 
-    const questions = await prisma.question.findMany({
-      where: { quesioner_id: quesionerId },
-      select: {
-        id: true,
-        title: true,
-        type: true,
-        options: { select: { id: true, title: true, score: true } },
-      },
-      orderBy: { id: "asc" },
-    });
+    const questions = await selectQuestions(quesionerId);
 
     return successResponse(
       res,
@@ -813,23 +717,20 @@ export const showResponseForInstitution = async (req, res) => {
     const search = req.query.search || "";
     const offset = limit * page;
 
-    const institution = await prisma.institution.findFirst({
-      where: {
-        id: user_id,
-      },
-    });
-
+    const [instRows] = await pool.query(
+      "SELECT * FROM institutions WHERE id = ? LIMIT 1",
+      [user_id],
+    );
+    const institution = instRows[0];
     if (!institution) {
       return errorResponse(res, 404, "Institution not found");
     }
 
-    const response = await prisma.response.findFirst({
-      where: {
-        institutionId: institution.id,
-        quisionerId: quesionerId,
-      },
-    });
-
+    const [respRows] = await pool.query(
+      "SELECT * FROM responses WHERE institutionId = ? AND quisionerId = ? ORDER BY id DESC LIMIT 1",
+      [institution.id, quesionerId],
+    );
+    const response = respRows[0];
     if (!response) {
       return res.json({
         totalRows: 0,
@@ -841,65 +742,34 @@ export const showResponseForInstitution = async (req, res) => {
       });
     }
 
-    const questions = await prisma.question.findMany({
-      where: {
-        quesioner_id: quesionerId,
-        title: {
-          contains: search,
-        },
-      },
-      select: {
-        id: true,
-        quesioner_id: true,
-        title: true,
-        type: true,
-        options: {
-          select: {
-            id: true,
-            title: true,
-            score: true,
-          },
-        },
-      },
-    });
+    const searchLike = like(search);
+    const [qRows] = await pool.query(
+      "SELECT id, quesioner_id, title, type FROM questions WHERE quesioner_id = ? AND title LIKE ? ORDER BY id ASC",
+      [quesionerId, searchLike],
+    );
+    const questionIds = qRows.map((q) => q.id);
+    const questions = await selectQuestions(quesionerId, search);
 
-    const questionIds = questions.map((q) => q.id);
-
-    const totalRows = await prisma.answer.count({
-      where: {
-        responseId: response.id,
-        questionId: {
-          in: questionIds,
-        },
-      },
-    });
-
+    let totalRows = 0;
+    let answers = [];
+    if (questionIds.length) {
+      const qph = questionIds.map(() => "?").join(",");
+      const [[cRow]] = await pool.query(
+        `SELECT COUNT(*) AS total FROM answers WHERE responseId = ? AND questionId IN (${qph})`,
+        [response.id, ...questionIds],
+      );
+      totalRows = cRow.total;
+      const [aRows] = await pool.query(
+        `SELECT * FROM answers WHERE responseId = ? AND questionId IN (${qph}) ORDER BY id ASC LIMIT ? OFFSET ?`,
+        [response.id, ...questionIds, limit, offset],
+      );
+      answers = aRows;
+    }
     const totalPage = Math.ceil(totalRows / limit);
-
-    const answers = await prisma.answer.findMany({
-      where: {
-        responseId: response.id,
-        questionId: {
-          in: questionIds,
-        },
-      },
-      skip: offset,
-      take: limit,
-      orderBy: {
-        id: "asc",
-      },
-    });
 
     return successResponse(
       res,
-      {
-        totalRows,
-        totalPage,
-        page,
-        limit,
-        questions,
-        answers,
-      },
+      { totalRows, totalPage, page, limit, questions, answers },
       "Berhasil mendapatkan data",
     );
   } catch (error) {

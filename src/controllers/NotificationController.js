@@ -1,12 +1,28 @@
-import { PrismaClient } from "@prisma/client";
+import { randomUUID } from "node:crypto";
+import pool from "../config/db.js";
 import { errorResponse, successResponse } from "../helpers/ResponseHelper.js";
 
-const prisma = new PrismaClient();
-
-export const createNotification = async (userId, title, message, type, referenceId = null) => {
-  return prisma.notification.create({
-    data: { userId, title, message, type, referenceId },
-  });
+export const createNotification = async (
+  userId,
+  title,
+  message,
+  type,
+  referenceId = null,
+) => {
+  const id = randomUUID();
+  await pool.query(
+    "INSERT INTO notifications (id, userId, title, message, isRead, type, referenceId, createdAt) VALUES (?, ?, ?, ?, 0, ?, ?, NOW())",
+    [id, userId, title, message, type, referenceId],
+  );
+  return {
+    id,
+    userId,
+    title,
+    message,
+    isRead: 0,
+    type,
+    referenceId,
+  };
 };
 
 export const getNotifications = async (req, res) => {
@@ -16,25 +32,24 @@ export const getNotifications = async (req, res) => {
     const limit = parseInt(req.query.limit) || 20;
     const skip = limit * page;
 
-    const [notifications, totalRows] = await Promise.all([
-      prisma.notification.findMany({
-        where: { userId: user.id },
-        orderBy: { createdAt: "desc" },
-        skip,
-        take: limit,
-      }),
-      prisma.notification.count({ where: { userId: user.id } }),
-    ]);
+    const [[countRow]] = await pool.query(
+      "SELECT COUNT(*) AS total FROM notifications WHERE userId = ?",
+      [user.id],
+    );
+    const totalRows = countRow.total;
+
+    const [notifications] = await pool.query(
+      "SELECT * FROM notifications WHERE userId = ? ORDER BY createdAt DESC LIMIT ? OFFSET ?",
+      [user.id, limit, skip],
+    );
 
     const totalPages = Math.ceil(totalRows / limit);
 
-    return successResponse(res, {
-      notifications,
-      page,
-      limit,
-      totalPages,
-      totalRows,
-    }, "Notifications fetched");
+    return successResponse(
+      res,
+      { notifications, page, limit, totalPages, totalRows },
+      "Notifications fetched",
+    );
   } catch (err) {
     return errorResponse(res, err, "Failed to get notifications");
   }
@@ -43,9 +58,11 @@ export const getNotifications = async (req, res) => {
 export const getUnreadCount = async (req, res) => {
   try {
     const user = req.user;
-    const count = await prisma.notification.count({
-      where: { userId: user.id, isRead: false },
-    });
+    const [[countRow]] = await pool.query(
+      "SELECT COUNT(*) AS total FROM notifications WHERE userId = ? AND isRead = 0",
+      [user.id],
+    );
+    const count = countRow.total;
 
     return successResponse(res, { count }, "Unread count fetched");
   } catch (err) {
@@ -58,10 +75,10 @@ export const markAsRead = async (req, res) => {
     const { id } = req.params;
     const user = req.user;
 
-    await prisma.notification.updateMany({
-      where: { id, userId: user.id },
-      data: { isRead: true },
-    });
+    await pool.query(
+      "UPDATE notifications SET isRead = 1 WHERE id = ? AND userId = ?",
+      [id, user.id],
+    );
 
     return successResponse(res, null, "Notification marked as read");
   } catch (err) {
@@ -73,10 +90,10 @@ export const markAllAsRead = async (req, res) => {
   try {
     const user = req.user;
 
-    await prisma.notification.updateMany({
-      where: { userId: user.id, isRead: false },
-      data: { isRead: true },
-    });
+    await pool.query(
+      "UPDATE notifications SET isRead = 1 WHERE userId = ? AND isRead = 0",
+      [user.id],
+    );
 
     return successResponse(res, null, "All notifications marked as read");
   } catch (err) {

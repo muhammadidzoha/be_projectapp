@@ -1,6 +1,5 @@
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import pool from "../config/db.js";
+import { randomUUID } from "node:crypto";
 
 const MONTH_NAMES = [
   "Januari", "Februari", "Maret", "April", "Mei", "Juni",
@@ -16,17 +15,27 @@ export const getOrCreateCurrentPeriod = async (familyId) => {
   const startDate = new Date(year, month, 1);
   const endDate = new Date(year, month + 1, 0);
 
-  let period = await prisma.monitoringPeriod.findUnique({
-    where: { familyId_label: { familyId, label } },
-  });
+  const [existing] = await pool.query(
+    "SELECT * FROM monitoring_periods WHERE familyId = ? AND label = ? LIMIT 1",
+    [familyId, label],
+  );
+  if (existing[0]) return existing[0];
 
-  if (!period) {
-    period = await prisma.monitoringPeriod.create({
-      data: { familyId, label, startDate, endDate },
-    });
+  const id = randomUUID();
+  try {
+    await pool.query(
+      "INSERT INTO monitoring_periods (id, familyId, label, startDate, endDate) VALUES (?, ?, ?, ?, ?)",
+      [id, familyId, label, startDate, endDate],
+    );
+  } catch (error) {
+    if (error.code !== "ER_DUP_ENTRY") throw error;
   }
 
-  return period;
+  const [rows] = await pool.query(
+    "SELECT * FROM monitoring_periods WHERE familyId = ? AND label = ? LIMIT 1",
+    [familyId, label],
+  );
+  return rows[0];
 };
 
 export const getPeriodLabelFromDate = (date) => {

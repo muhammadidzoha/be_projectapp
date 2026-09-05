@@ -1,29 +1,28 @@
-import { PrismaClient } from "@prisma/client";
+import pool from "../config/db.js";
+import { randomUUID } from "node:crypto";
 import { errorResponse, successResponse } from "../helpers/ResponseHelper.js";
 import { getOrCreateCurrentPeriod } from "../helpers/MonitoringHelper.js";
-
-const prisma = new PrismaClient();
+import { like } from "../utils/dbHelpers.js";
 
 export const getFamily = async (req, res) => {
   try {
-    const family = await prisma.family.findMany({
-      select: {
-        id: true,
-        user: {
-          select: {
-            id: true,
-            username: true,
-            email: true,
-            role: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
-        },
+    const [rows] = await pool.query(
+      `SELECT f.id,
+              u.id AS user_id, u.username AS user_username, u.email AS user_email,
+              r.id AS role_id, r.name AS role_name
+       FROM families f
+       JOIN users u ON u.id = f.userId
+       JOIN roles r ON r.id = u.role_id`,
+    );
+    const family = rows.map((row) => ({
+      id: row.id,
+      user: {
+        id: row.user_id,
+        username: row.user_username,
+        email: row.user_email,
+        role: { id: row.role_id, name: row.role_name },
       },
-    });
+    }));
     return successResponse(res, family, "Family retrieved successfully");
   } catch (error) {
     return errorResponse(res, error, "Failed to retrieve family");
@@ -39,138 +38,126 @@ export const getFamilyMemberByUser = async (req, res) => {
   try {
     const user = req.user;
 
-    const family = await prisma.family.findMany({
-      where: {
-        userId: user.id,
-      },
-    });
-
-    if (!family) {
+    const [families] = await pool.query(
+      "SELECT id FROM families WHERE userId = ?",
+      [user.id],
+    );
+    if (!families.length) {
       return errorResponse(res, null, "Family not found");
     }
+    const familyIds = families.map((f) => f.id);
+    const idsPlaceholders = familyIds.map(() => "?").join(",");
+    const searchLike = like(search);
 
-    const totalRows = await prisma.familyMember.count({
-      where: {
-        familyId: {
-          in: family.map((family) => family.id),
-        },
-        OR: [
-          {
-            fullName: {
-              contains: search,
-            },
-          },
-        ],
-      },
-    });
-
+    const [[countRow]] = await pool.query(
+      `SELECT COUNT(*) AS total FROM family_members
+       WHERE familyId IN (${idsPlaceholders}) AND fullName LIKE ?`,
+      [...familyIds, searchLike],
+    );
+    const totalRows = countRow.total;
     const totalPage = Math.ceil(totalRows / limit);
-    const familyMembers = await prisma.familyMember.findMany({
-      where: {
-        familyId: {
-          in: family.map((family) => family.id),
-        },
-        OR: [
-          {
-            fullName: {
-              contains: search,
-            },
-          },
-        ],
-      },
-      select: {
-        id: true,
-        fullName: true,
-        birthDate: true,
-        age: true,
-        education: true,
-        gender: true,
-        relation: true,
-        phone: true,
-        job: {
-          select: {
-            id: true,
-            jobType: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
-        },
-        SocioEconomic: {
-          select: {
-            id: true,
-            residenceStatus: true,
-            address: true,
-            childrenCount: true,
-            underFiveCount: true,
-            familyIncomeLevel: true,
-          },
-        },
-        nutrition: {
-          select: {
-            id: true,
-            height: true,
-            weight: true,
-            bmi: true,
-            measurementDate: true,
-            nutritionStatus: {
-              select: {
-                id: true,
-                information: true,
-                displayName: true,
-              },
-            },
-            monitoringPeriod: {
-              select: { label: true },
-            },
-          },
-        },
-        student: {
-          select: {
-            id: true,
-            nis: true,
-            schoolYear: true,
-            semester: true,
-            class: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-            institution: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                address: true,
-                institution_type: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
-                },
-                phone: true,
-                province: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
-                },
-                city: {
-                  select: {
-                    id: true,
-                    name: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-        isCompleted: true,
-      },
-    });
+
+    const [rows] = await pool.query(
+      `SELECT fm.id, fm.fullName, fm.birthDate, fm.age, fm.education, fm.gender,
+              fm.relation, fm.phone, fm.isCompleted, fm.socioEconomicId, fm.jobId,
+              j.id AS job_id, jt.id AS jobType_id, jt.name AS jobType_name,
+              se.id AS socio_id, se.residenceStatus, se.address, se.childrenCount,
+              se.underFiveCount, se.familyIncomeLevel,
+              n.id AS nutrition_id, n.height, n.weight, n.bmi, n.measurementDate,
+              ns.id AS ns_id, ns.information, ns.displayName,
+              mp.label AS period_label,
+              s.id AS student_id, s.nis, s.schoolYear, s.semester,
+              cl.id AS class_id, cl.name AS class_name,
+              ins.id AS institution_id, ins.name AS institution_name, ins.email AS institution_email,
+              ins.address AS institution_address, ins.phone AS institution_phone,
+              it.id AS itype_id, it.name AS itype_name,
+              prov.id AS province_id, prov.name AS province_name,
+              city.id AS city_id, city.name AS city_name
+       FROM family_members fm
+       LEFT JOIN jobs j ON j.id = fm.jobId
+       LEFT JOIN job_types jt ON jt.id = j.jobTypeId
+       LEFT JOIN socio_economic se ON se.id = fm.socioEconomicId
+       LEFT JOIN students s ON s.familyMemberId = fm.id
+       LEFT JOIN classes cl ON cl.id = s.classId
+       LEFT JOIN institutions ins ON ins.id = s.schoolId
+       LEFT JOIN institution_types it ON it.id = ins.type
+       LEFT JOIN provinces prov ON prov.id = ins.province_id
+       LEFT JOIN cities city ON city.id = ins.city_id
+       LEFT JOIN nutritions n ON n.id = (
+         SELECT n2.id FROM nutritions n2 WHERE n2.familyMemberId = fm.id ORDER BY n2.measurementDate DESC, n2.id DESC LIMIT 1
+       )
+       LEFT JOIN nutrition_status ns ON ns.id = n.nutritionStatusId
+       LEFT JOIN monitoring_periods mp ON mp.id = n.monitoringPeriodId
+       WHERE fm.familyId IN (${idsPlaceholders}) AND fm.fullName LIKE ?
+       ORDER BY fm.id ASC LIMIT ? OFFSET ?`,
+      [...familyIds, searchLike, limit, offset],
+    );
+
+    const familyMembers = rows.map((fm) => ({
+      id: fm.id,
+      fullName: fm.fullName,
+      birthDate: fm.birthDate,
+      age: fm.age,
+      education: fm.education,
+      gender: fm.gender,
+      relation: fm.relation,
+      phone: fm.phone,
+      job: fm.job_id
+        ? {
+            id: fm.job_id,
+            jobType: fm.jobType_id ? { id: fm.jobType_id, name: fm.jobType_name } : null,
+          }
+        : null,
+      SocioEconomic: fm.socio_id
+        ? {
+            id: fm.socio_id,
+            residenceStatus: fm.residenceStatus,
+            address: fm.address,
+            childrenCount: fm.childrenCount,
+            underFiveCount: fm.underFiveCount,
+            familyIncomeLevel: fm.familyIncomeLevel,
+          }
+        : null,
+      nutrition: fm.nutrition_id
+        ? {
+            id: fm.nutrition_id,
+            height: fm.height,
+            weight: fm.weight,
+            bmi: fm.bmi,
+            measurementDate: fm.measurementDate,
+            nutritionStatus: fm.ns_id
+              ? { id: fm.ns_id, information: fm.information, displayName: fm.displayName }
+              : null,
+            monitoringPeriod: fm.period_label ? { label: fm.period_label } : null,
+          }
+        : null,
+      student: fm.student_id
+        ? {
+            id: fm.student_id,
+            nis: fm.nis,
+            schoolYear: fm.schoolYear,
+            semester: fm.semester,
+            class: fm.class_id ? { id: fm.class_id, name: fm.class_name } : null,
+            institution: fm.institution_id
+              ? {
+                  id: fm.institution_id,
+                  name: fm.institution_name,
+                  email: fm.institution_email,
+                  address: fm.institution_address,
+                  institution_type: fm.itype_id
+                    ? { id: fm.itype_id, name: fm.itype_name }
+                    : null,
+                  phone: fm.institution_phone,
+                  province: fm.province_id
+                    ? { id: fm.province_id, name: fm.province_name }
+                    : null,
+                  city: fm.city_id ? { id: fm.city_id, name: fm.city_name } : null,
+                }
+              : null,
+          }
+        : null,
+      isCompleted: !!fm.isCompleted,
+    }));
 
     return successResponse(
       res,
@@ -187,32 +174,24 @@ export const getFamilyMember = async (req, res) => {
   const limit = parseInt(req.query.limit) || 10;
   const search = req.query.search || "";
   const offset = limit * page;
+  const searchLike = like(search);
 
   try {
-    const totalRows = await prisma.familyMember.count({
-      where: {
-        fullName: {
-          contains: search,
-        },
-      },
-    });
-
+    const [[countRow]] = await pool.query(
+      "SELECT COUNT(*) AS total FROM family_members WHERE fullName LIKE ?",
+      [searchLike],
+    );
+    const totalRows = countRow.total;
     const totalPage = Math.ceil(totalRows / limit);
-    const familyMembers = await prisma.familyMember.findMany({
-      where: {
-        fullName: {
-          contains: search,
-        },
-      },
-      skip: offset,
-      take: limit,
-      orderBy: {
-        id: "asc",
-      },
-    });
+
+    const [rows] = await pool.query(
+      "SELECT * FROM family_members WHERE fullName LIKE ? ORDER BY id ASC LIMIT ? OFFSET ?",
+      [searchLike, limit, offset],
+    );
+
     return successResponse(
       res,
-      { totalRows, totalPage, page, limit, familyMembers },
+      { totalRows, totalPage, page, limit, familyMembers: rows },
       "Family Member retrieved successfully",
     );
   } catch (error) {
@@ -224,54 +203,92 @@ export const getParentsByFamilyMemberId = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const familyMember = await prisma.familyMember.findUnique({
-      where: { id },
-      select: { familyId: true },
-    });
-
+    const [fmRows] = await pool.query(
+      "SELECT familyId FROM family_members WHERE id = ? LIMIT 1",
+      [id],
+    );
+    const familyMember = fmRows[0];
     if (!familyMember)
       return errorResponse(res, null, "Family member not found");
 
-    const parents = await prisma.familyMember.findMany({
-      where: {
-        familyId: familyMember.familyId,
-        OR: [{ relation: "AYAH" }, { relation: "IBU" }],
-      },
-      select: {
-        id: true,
-        fullName: true,
-        birthDate: true,
-        age: true,
-        education: true,
-        phone: true,
-        job: {
-          select: {
-            id: true,
-            jobType: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
-        },
-        SocioEconomic: {
-          select: {
-            id: true,
-            residenceStatus: true,
-            address: true,
-            childrenCount: true,
-            underFiveCount: true,
-            familyIncomeLevel: true,
-          },
-        },
-      },
-    });
+    const [rows] = await pool.query(
+      `SELECT fm.id, fm.fullName, fm.birthDate, fm.age, fm.education, fm.phone,
+              j.id AS job_id, jt.id AS jobType_id, jt.name AS jobType_name,
+              se.id AS socio_id, se.residenceStatus, se.address, se.childrenCount,
+              se.underFiveCount, se.familyIncomeLevel
+       FROM family_members fm
+       LEFT JOIN jobs j ON j.id = fm.jobId
+       LEFT JOIN job_types jt ON jt.id = j.jobTypeId
+       LEFT JOIN socio_economic se ON se.id = fm.socioEconomicId
+       WHERE fm.familyId = ? AND (fm.relation = 'AYAH' OR fm.relation = 'IBU')`,
+      [familyMember.familyId],
+    );
+
+    const parents = rows.map((fm) => ({
+      id: fm.id,
+      fullName: fm.fullName,
+      birthDate: fm.birthDate,
+      age: fm.age,
+      education: fm.education,
+      phone: fm.phone,
+      job: fm.job_id
+        ? {
+            id: fm.job_id,
+            jobType: fm.jobType_id ? { id: fm.jobType_id, name: fm.jobType_name } : null,
+          }
+        : null,
+      SocioEconomic: fm.socio_id
+        ? {
+            id: fm.socio_id,
+            residenceStatus: fm.residenceStatus,
+            address: fm.address,
+            childrenCount: fm.childrenCount,
+            underFiveCount: fm.underFiveCount,
+            familyIncomeLevel: fm.familyIncomeLevel,
+          }
+        : null,
+    }));
 
     return successResponse(res, parents, "Parents retrieved successfully");
   } catch (error) {
     return errorResponse(res, error, "Failed to retrieve parents");
   }
+};
+
+const calculateNutritionStatus = async (gender, birthDate, bmi) => {
+  if (!birthDate || !gender) return null;
+  const childBirthDate = new Date(birthDate);
+  const today = new Date();
+  let ageMonths =
+    (today.getFullYear() - childBirthDate.getFullYear()) * 12 +
+    (today.getMonth() - childBirthDate.getMonth());
+  if (today.getDate() < childBirthDate.getDate()) ageMonths--;
+  const ageYear = Math.floor(ageMonths / 12);
+  const ageMonthRemainder = ageMonths % 12;
+
+  const [bmiRefRows] = await pool.query(
+    `SELECT * FROM bmi_references
+     WHERE gender = ? AND ageYear = ? AND ageMonthFrom <= ? AND ageMonthTo >= ?
+     LIMIT 1`,
+    [gender, ageYear, ageMonthRemainder, ageMonthRemainder],
+  );
+  const bmiRef = bmiRefRows[0];
+  if (!bmiRef) return null;
+
+  let nutritionStatusEnum;
+  if (bmi < bmiRef.sdMinus2Min) {
+    nutritionStatusEnum = "GIZI_BURUK_KURANG";
+  } else if (bmi > bmiRef.sdPlus1Max) {
+    nutritionStatusEnum = "OVERWEIGHT_OBESITAS";
+  } else {
+    nutritionStatusEnum = "GIZI_BAIK";
+  }
+
+  const [nsRows] = await pool.query(
+    "SELECT id FROM nutrition_status WHERE status = ? LIMIT 1",
+    [nutritionStatusEnum],
+  );
+  return nsRows[0]?.id ?? null;
 };
 
 export const createFamilyMember = async (req, res) => {
@@ -283,12 +300,11 @@ export const createFamilyMember = async (req, res) => {
       members = [members];
     }
 
-    const familyByUser = await prisma.family.findUnique({
-      where: {
-        userId: user.id,
-      },
-    });
-
+    const [familyRows] = await pool.query(
+      "SELECT * FROM families WHERE userId = ? LIMIT 1",
+      [user.id],
+    );
+    const familyByUser = familyRows[0];
     if (!familyByUser) {
       return errorResponse(res, null, "Family not found");
     }
@@ -323,36 +339,31 @@ export const createFamilyMember = async (req, res) => {
 
       let job, socioEconomic, familyMember, nutrition, student, parent;
 
-      const existingFamilyMember = await prisma.familyMember.findFirst({
-        where: {
-          familyId: familyByUser.id,
-          relation,
-        },
-        include: {
-          job: true,
-        },
-      });
+      const [existingRows] = await pool.query(
+        "SELECT * FROM family_members WHERE familyId = ? AND relation = ? LIMIT 1",
+        [familyByUser.id, relation],
+      );
+      const existingFamilyMember = existingRows[0];
 
       if (type === "ibu") {
-        socioEconomic = await prisma.socioEconomic.create({
-          data: {
-            residenceStatus,
-            address,
-            childrenCount,
-            underFiveCount,
-            familyIncomeLevel,
-          },
-        });
+        const [seResult] = await pool.query(
+          "INSERT INTO socio_economic (residenceStatus, address, childrenCount, underFiveCount, familyIncomeLevel, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, NOW(), NOW())",
+          [residenceStatus, address, childrenCount, underFiveCount, familyIncomeLevel],
+        );
+        socioEconomic = { id: seResult.insertId };
 
-        if (existingFamilyMember && existingFamilyMember.job) {
-          job = await prisma.job.update({
-            where: { id: existingFamilyMember.job.id },
-            data: { jobTypeId },
-          });
+        if (existingFamilyMember && existingFamilyMember.jobId) {
+          await pool.query("UPDATE jobs SET jobTypeId = ? WHERE id = ?", [
+            jobTypeId,
+            existingFamilyMember.jobId,
+          ]);
+          job = { id: existingFamilyMember.jobId };
         } else {
-          job = await prisma.job.create({
-            data: { jobTypeId },
-          });
+          const [jobResult] = await pool.query(
+            "INSERT INTO jobs (jobTypeId, createdAt, updatedAt) VALUES (?, NOW(), NOW())",
+            [jobTypeId],
+          );
+          job = { id: jobResult.insertId };
         }
 
         if (!job || !job.id) {
@@ -360,48 +371,42 @@ export const createFamilyMember = async (req, res) => {
           continue;
         }
 
+        const data = {
+          fullName,
+          age: age ? parseInt(age) : null,
+          education,
+          relation,
+          familyId: familyByUser.id,
+          phone,
+          jobId: job.id,
+          socioEconomicId: socioEconomic.id,
+          isCompleted: 1,
+          updatedAt: new Date(),
+        };
+
         if (existingFamilyMember) {
-          familyMember = await prisma.familyMember.update({
-            where: { id: existingFamilyMember.id },
-            data: {
-              fullName,
-              age: age ? parseInt(age) : null,
-              education,
-              relation,
-              familyId: familyByUser.id,
-              phone,
-              jobId: job.id,
-              socioEconomicId: socioEconomic.id,
-              isCompleted: true,
-            },
-          });
+          await pool.query(
+            "UPDATE family_members SET fullName = ?, age = ?, education = ?, relation = ?, familyId = ?, phone = ?, jobId = ?, socioEconomicId = ?, isCompleted = ?, updatedAt = NOW() WHERE id = ?",
+            [data.fullName, data.age, data.education, data.relation, data.familyId, data.phone, data.jobId, data.socioEconomicId, 1, existingFamilyMember.id],
+          );
+          familyMember = { id: existingFamilyMember.id, ...data };
         } else {
-          familyMember = await prisma.familyMember.create({
-            data: {
-              fullName,
-              age: age ? parseInt(age) : null,
-              education,
-              relation,
-              familyId: familyByUser.id,
-              phone,
-              jobId: job.id,
-              socioEconomicId: socioEconomic.id,
-              isCompleted: true,
-            },
-          });
+          const id = randomUUID();
+          await pool.query(
+            "INSERT INTO family_members (id, fullName, age, education, relation, familyId, phone, jobId, socioEconomicId, isCompleted, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())",
+            [id, data.fullName, data.age, data.education, data.relation, data.familyId, data.phone, data.jobId, data.socioEconomicId],
+          );
+          familyMember = { id, ...data };
         }
       } else if (type === "ayah") {
         let socioEconomicId;
 
         if (sameSocioEconomic) {
-          const ibu = await prisma.familyMember.findFirst({
-            where: {
-              familyId: familyByUser.id,
-              relation: "IBU",
-            },
-            select: { socioEconomicId: true },
-          });
-
+          const [ibuRows] = await pool.query(
+            "SELECT socioEconomicId FROM family_members WHERE familyId = ? AND relation = 'IBU' LIMIT 1",
+            [familyByUser.id],
+          );
+          const ibu = ibuRows[0];
           if (!ibu || !ibu.socioEconomicId) {
             results.push({
               error: "Data ibu tidak ditemukan, isi data ibu terlebih dahulu",
@@ -409,30 +414,28 @@ export const createFamilyMember = async (req, res) => {
             });
             continue;
           }
-
           socioEconomicId = ibu.socioEconomicId;
         } else {
-          socioEconomic = await prisma.socioEconomic.create({
-            data: {
-              residenceStatus,
-              address,
-              childrenCount,
-              underFiveCount,
-              familyIncomeLevel,
-            },
-          });
+          const [seResult] = await pool.query(
+            "INSERT INTO socio_economic (residenceStatus, address, childrenCount, underFiveCount, familyIncomeLevel, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, NOW(), NOW())",
+            [residenceStatus, address, childrenCount, underFiveCount, familyIncomeLevel],
+          );
+          socioEconomic = { id: seResult.insertId };
           socioEconomicId = socioEconomic.id;
         }
 
-        if (existingFamilyMember && existingFamilyMember.job) {
-          job = await prisma.job.update({
-            where: { id: existingFamilyMember.job.id },
-            data: { jobTypeId },
-          });
+        if (existingFamilyMember && existingFamilyMember.jobId) {
+          await pool.query("UPDATE jobs SET jobTypeId = ? WHERE id = ?", [
+            jobTypeId,
+            existingFamilyMember.jobId,
+          ]);
+          job = { id: existingFamilyMember.jobId };
         } else {
-          job = await prisma.job.create({
-            data: { jobTypeId },
-          });
+          const [jobResult] = await pool.query(
+            "INSERT INTO jobs (jobTypeId, createdAt, updatedAt) VALUES (?, NOW(), NOW())",
+            [jobTypeId],
+          );
+          job = { id: jobResult.insertId };
         }
 
         if (!job || !job.id) {
@@ -441,35 +444,20 @@ export const createFamilyMember = async (req, res) => {
         }
 
         if (existingFamilyMember) {
-          familyMember = await prisma.familyMember.update({
-            where: { id: existingFamilyMember.id },
-            data: {
-              fullName,
-              age: age ? parseInt(age) : null,
-              education,
-              relation,
-              familyId: familyByUser.id,
-              phone,
-              jobId: job.id,
-              socioEconomicId,
-              isCompleted: true,
-            },
-          });
+          await pool.query(
+            "UPDATE family_members SET fullName = ?, age = ?, education = ?, relation = ?, familyId = ?, phone = ?, jobId = ?, socioEconomicId = ?, isCompleted = 1, updatedAt = NOW() WHERE id = ?",
+            [fullName, age ? parseInt(age) : null, education, relation, familyByUser.id, phone, job.id, socioEconomicId, existingFamilyMember.id],
+          );
+          familyMember = { id: existingFamilyMember.id };
         } else {
-          familyMember = await prisma.familyMember.create({
-            data: {
-              fullName,
-              age: age ? parseInt(age) : null,
-              education,
-              relation,
-              familyId: familyByUser.id,
-              phone,
-              jobId: job.id,
-              socioEconomicId,
-              isCompleted: true,
-            },
-          });
+          const id = randomUUID();
+          await pool.query(
+            "INSERT INTO family_members (id, fullName, age, education, relation, familyId, phone, jobId, socioEconomicId, isCompleted, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())",
+            [id, fullName, age ? parseInt(age) : null, education, relation, familyByUser.id, phone, job.id, socioEconomicId],
+          );
+          familyMember = { id };
         }
+        socioEconomic = { id: socioEconomicId };
       } else if (type === "anak") {
         const childBirthDate = new Date(birthDate);
         const today = new Date();
@@ -485,15 +473,13 @@ export const createFamilyMember = async (req, res) => {
         const heightInMeters = Number(height) / 100;
         const calculateBMI = Number(weight) / (heightInMeters * heightInMeters);
 
-        const bmiRef = await prisma.bmiReference.findFirst({
-          where: {
-            gender: gender,
-            ageYear: ageYear,
-            ageMonthFrom: { lte: ageMonthRemainder },
-            ageMonthTo: { gte: ageMonthRemainder },
-          },
-        });
-
+        const [bmiRefRows] = await pool.query(
+          `SELECT * FROM bmi_references
+           WHERE gender = ? AND ageYear = ? AND ageMonthFrom <= ? AND ageMonthTo >= ?
+           LIMIT 1`,
+          [gender, ageYear, ageMonthRemainder, ageMonthRemainder],
+        );
+        const bmiRef = bmiRefRows[0];
         if (!bmiRef) {
           results.push({
             error: "Referensi BMI tidak ditemukan untuk usia anak ini",
@@ -511,65 +497,41 @@ export const createFamilyMember = async (req, res) => {
           nutritionStatusEnum = "GIZI_BAIK";
         }
 
-        const nutritionStatusRecord = await prisma.nutritionStatus.findFirst({
-          where: { status: nutritionStatusEnum },
-        });
-
+        const [nsRows] = await pool.query(
+          "SELECT id FROM nutrition_status WHERE status = ? LIMIT 1",
+          [nutritionStatusEnum],
+        );
+        const nutritionStatusRecord = nsRows[0];
         if (!nutritionStatusRecord) {
-          results.push({
-            error: "Nutrition status not found",
-            member,
-          });
+          results.push({ error: "Nutrition status not found", member });
           continue;
         }
 
-        parent = await prisma.familyMember.findFirst({
-          where: {
-            familyId: familyByUser.id,
-            OR: [{ relation: "IBU" }, { relation: "AYAH" }],
-          },
-          select: {
-            socioEconomicId: true,
-          },
-        });
-
+        const [parentRows] = await pool.query(
+          `SELECT socioEconomicId FROM family_members
+           WHERE familyId = ? AND (relation = 'IBU' OR relation = 'AYAH')
+           LIMIT 1`,
+          [familyByUser.id],
+        );
+        parent = parentRows[0];
         if (!parent || !parent.socioEconomicId) {
-          results.push({
-            error: "Data orang tua tidak ditemukan",
-            member,
-          });
+          results.push({ error: "Data orang tua tidak ditemukan", member });
           continue;
         }
 
         if (existingFamilyMember) {
-          familyMember = await prisma.familyMember.update({
-            where: { id: existingFamilyMember.id },
-            data: {
-              fullName,
-              birthDate: childBirthDate,
-              education,
-              gender,
-              relation,
-              familyId: familyByUser.id,
-              phone,
-              socioEconomicId: parent.socioEconomicId,
-              isCompleted: true,
-            },
-          });
+          await pool.query(
+            "UPDATE family_members SET fullName = ?, birthDate = ?, education = ?, gender = ?, relation = ?, familyId = ?, phone = ?, socioEconomicId = ?, isCompleted = 1, updatedAt = NOW() WHERE id = ?",
+            [fullName, childBirthDate, education, gender, relation, familyByUser.id, phone, parent.socioEconomicId, existingFamilyMember.id],
+          );
+          familyMember = { id: existingFamilyMember.id };
         } else {
-          familyMember = await prisma.familyMember.create({
-            data: {
-              fullName,
-              birthDate: childBirthDate,
-              education,
-              gender,
-              relation,
-              familyId: familyByUser.id,
-              phone,
-              socioEconomicId: parent.socioEconomicId,
-              isCompleted: true,
-            },
-          });
+          const id = randomUUID();
+          await pool.query(
+            "INSERT INTO family_members (id, fullName, birthDate, education, gender, relation, familyId, phone, socioEconomicId, isCompleted, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())",
+            [id, fullName, childBirthDate, education, gender, relation, familyByUser.id, phone, parent.socioEconomicId],
+          );
+          familyMember = { id };
         }
 
         if (!nis || !schoolId) {
@@ -577,48 +539,34 @@ export const createFamilyMember = async (req, res) => {
           continue;
         }
 
-        const existingStudent = await prisma.student.findUnique({
-          where: { nis },
-        });
+        const [existingStudentRows] = await pool.query(
+          "SELECT id FROM students WHERE nis = ? LIMIT 1",
+          [nis],
+        );
+        const existingStudent = existingStudentRows[0];
 
         if (existingStudent) {
-          student = await prisma.student.update({
-            where: { nis },
-            data: {
-              schoolYear,
-              semester,
-              schoolId,
-              classId,
-              familyMemberId: familyMember.id,
-            },
-          });
+          await pool.query(
+            "UPDATE students SET schoolYear = ?, semester = ?, schoolId = ?, classId = ?, familyMemberId = ? WHERE id = ?",
+            [schoolYear, semester, schoolId, classId, familyMember.id, existingStudent.id],
+          );
+          student = { id: existingStudent.id, nis };
         } else {
-          student = await prisma.student.create({
-            data: {
-              nis,
-              schoolYear,
-              semester,
-              schoolId,
-              classId,
-              familyMemberId: familyMember.id,
-            },
-          });
+          const id = randomUUID();
+          await pool.query(
+            "INSERT INTO students (id, schoolId, familyMemberId, nis, schoolYear, semester, classId) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [id, schoolId, familyMember.id, nis, schoolYear, semester, classId],
+          );
+          student = { id, nis };
         }
 
         const period = await getOrCreateCurrentPeriod(familyByUser.id);
 
-        nutrition = await prisma.nutrition.create({
-          data: {
-            height: Number(height),
-            weight: Number(weight),
-            bmi: calculateBMI,
-            nutritionStatusId: nutritionStatusRecord.id,
-            familyMemberId: familyMember.id,
-            createdBy: user.id,
-            measurementDate: new Date(),
-            monitoringPeriodId: period.id,
-          },
-        });
+        const [nutritionResult] = await pool.query(
+          "INSERT INTO nutritions (height, weight, bmi, nutritionStatusId, familyMemberId, createdBy, measurementDate, monitoringPeriodId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, NOW(), NOW())",
+          [Number(height), Number(weight), calculateBMI, nutritionStatusRecord.id, familyMember.id, user.id, period.id],
+        );
+        nutrition = { id: nutritionResult.insertId };
       } else {
         results.push({ error: "Invalid type", member });
         continue;
@@ -657,24 +605,31 @@ export const updateFamilyMember = async (req, res) => {
       ...fields
     } = req.body;
 
-    const familyMember = await prisma.familyMember.findUnique({
-      where: { id },
-      include: {
-        nutrition: true,
-        student: true,
-      },
-    });
-
+    const [fmRows] = await pool.query(
+      `SELECT fm.*, s.id AS student_id
+       FROM family_members fm
+       LEFT JOIN students s ON s.familyMemberId = fm.id
+       WHERE fm.id = ? LIMIT 1`,
+      [id],
+    );
+    const familyMember = fmRows[0];
     if (!familyMember) {
       return errorResponse(res, null, "Family member not found");
     }
 
     if (Object.keys(fields).length > 0) {
       if (fields.birthDate) fields.birthDate = new Date(fields.birthDate);
-      await prisma.familyMember.update({
-        where: { id },
-        data: fields,
-      });
+      const sets = [];
+      const params = [];
+      for (const [key, value] of Object.entries(fields)) {
+        sets.push(`${key} = ?`);
+        params.push(value);
+      }
+      params.push(id);
+      await pool.query(
+        `UPDATE family_members SET ${sets.join(", ")} WHERE id = ?`,
+        params,
+      );
     }
 
     if (height !== undefined || weight !== undefined) {
@@ -684,59 +639,24 @@ export const updateFamilyMember = async (req, res) => {
       if (height !== undefined && weight !== undefined) {
         const heightInMeters = Number(height) / 100;
         bmi = Number(weight) / (heightInMeters * heightInMeters);
-
-        const childBirthDate = familyMember.birthDate;
-        if (childBirthDate) {
-          const today = new Date();
-          let ageMonths =
-            (today.getFullYear() - childBirthDate.getFullYear()) * 12 +
-            (today.getMonth() - childBirthDate.getMonth());
-          if (today.getDate() < childBirthDate.getDate()) {
-            ageMonths--;
-          }
-          const ageYear = Math.floor(ageMonths / 12);
-          const ageMonthRemainder = ageMonths % 12;
-
-          const bmiRef = await prisma.bmiReference.findFirst({
-            where: {
-              gender: familyMember.gender,
-              ageYear: ageYear,
-              ageMonthFrom: { lte: ageMonthRemainder },
-              ageMonthTo: { gte: ageMonthRemainder },
-            },
-          });
-
-          if (bmiRef) {
-            let nutritionStatusEnum;
-            if (bmi < bmiRef.sdMinus2Min) {
-              nutritionStatusEnum = "GIZI_BURUK_KURANG";
-            } else if (bmi > bmiRef.sdPlus1Max) {
-              nutritionStatusEnum = "OVERWEIGHT_OBESITAS";
-            } else {
-              nutritionStatusEnum = "GIZI_BAIK";
-            }
-
-            const nutritionStatusRecord =
-              await prisma.nutritionStatus.findFirst({
-                where: { status: nutritionStatusEnum },
-              });
-            nutritionStatusId = nutritionStatusRecord?.id;
-          }
-        }
+        const idVal = familyMember.birthDate
+          ? await calculateNutritionStatus(familyMember.gender, familyMember.birthDate, bmi)
+          : null;
+        nutritionStatusId = idVal;
       }
 
-      await prisma.nutrition.create({
-        data: {
-          ...(height !== undefined && { height: Number(height) }),
-          ...(weight !== undefined && { weight: Number(weight) }),
-          ...(bmi !== undefined && { bmi }),
-          ...(nutritionStatusId && { nutritionStatusId }),
-          familyMemberId: familyMember.id,
-          createdBy: req.user.id,
-          measurementDate: new Date(),
-          monitoringPeriodId: period.id,
-        },
-      });
+      await pool.query(
+        "INSERT INTO nutritions (height, weight, bmi, nutritionStatusId, familyMemberId, createdBy, measurementDate, monitoringPeriodId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, NOW(), ?, NOW(), NOW())",
+        [
+          height !== undefined ? Number(height) : null,
+          weight !== undefined ? Number(weight) : null,
+          bmi !== undefined ? bmi : null,
+          nutritionStatusId || null,
+          familyMember.id,
+          req.user.id,
+          period.id,
+        ],
+      );
     }
 
     if (type === "anak") {
@@ -748,28 +668,42 @@ export const updateFamilyMember = async (req, res) => {
         ...(classId !== undefined && { classId }),
       };
 
-      if (Object.keys(studentUpdateData).length > 0 && familyMember.student) {
-        await prisma.student.update({
-          where: { id: familyMember.student.id },
-          data: studentUpdateData,
-        });
+      if (Object.keys(studentUpdateData).length > 0 && familyMember.student_id) {
+        const sets = [];
+        const params = [];
+        for (const [key, value] of Object.entries(studentUpdateData)) {
+          sets.push(`${key} = ?`);
+          params.push(value);
+        }
+        params.push(familyMember.student_id);
+        await pool.query(
+          `UPDATE students SET ${sets.join(", ")} WHERE id = ?`,
+          params,
+        );
       } else if (
         Object.keys(studentUpdateData).length > 0 &&
-        !familyMember.student
+        !familyMember.student_id
       ) {
-        await prisma.student.create({
-          data: {
-            ...studentUpdateData,
-            familyMemberId: familyMember.id,
-          },
-        });
+        const id = randomUUID();
+        await pool.query(
+          "INSERT INTO students (id, schoolId, familyMemberId, nis, schoolYear, semester, classId) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          [
+            id,
+            studentUpdateData.schoolId,
+            familyMember.id,
+            studentUpdateData.nis,
+            studentUpdateData.schoolYear,
+            studentUpdateData.semester,
+            studentUpdateData.classId,
+          ],
+        );
       }
     }
 
-    await prisma.familyMember.update({
-      where: { id },
-      data: { isCompleted: true },
-    });
+    await pool.query(
+      "UPDATE family_members SET isCompleted = 1 WHERE id = ?",
+      [id],
+    );
 
     return successResponse(res, null, "Berhasil mengupdate anggota keluarga");
   } catch (error) {
@@ -787,16 +721,19 @@ export const addMeasurement = async (req, res) => {
       return errorResponse(res, null, "Height and weight are required");
     }
 
-    const familyMember = await prisma.familyMember.findUnique({
-      where: { id },
-      include: { family: true },
-    });
-
+    const [fmRows] = await pool.query(
+      `SELECT fm.*, f.userId AS family_userId
+       FROM family_members fm
+       JOIN families f ON f.id = fm.familyId
+       WHERE fm.id = ? LIMIT 1`,
+      [id],
+    );
+    const familyMember = fmRows[0];
     if (!familyMember) {
       return errorResponse(res, null, "Family member not found");
     }
 
-    if (familyMember.family.userId !== user.id && user.role !== "healthcare") {
+    if (familyMember.family_userId !== user.id && user.role !== "healthcare") {
       return errorResponse(res, 403, "Unauthorized");
     }
 
@@ -807,58 +744,41 @@ export const addMeasurement = async (req, res) => {
 
     let nutritionStatusId = null;
     if (familyMember.birthDate && familyMember.gender) {
-      const childBirthDate = new Date(familyMember.birthDate);
-      const today = new Date();
-      let ageMonths =
-        (today.getFullYear() - childBirthDate.getFullYear()) * 12 +
-        (today.getMonth() - childBirthDate.getMonth());
-      if (today.getDate() < childBirthDate.getDate()) ageMonths--;
-      const ageYear = Math.floor(ageMonths / 12);
-      const ageMonthRemainder = ageMonths % 12;
-
-      const bmiRef = await prisma.bmiReference.findFirst({
-        where: {
-          gender: familyMember.gender,
-          ageYear: ageYear,
-          ageMonthFrom: { lte: ageMonthRemainder },
-          ageMonthTo: { gte: ageMonthRemainder },
-        },
-      });
-
-      if (bmiRef) {
-        let nutritionStatusEnum;
-        if (calculateBMI < bmiRef.sdMinus2Min) {
-          nutritionStatusEnum = "GIZI_BURUK_KURANG";
-        } else if (calculateBMI > bmiRef.sdPlus1Max) {
-          nutritionStatusEnum = "OVERWEIGHT_OBESITAS";
-        } else {
-          nutritionStatusEnum = "GIZI_BAIK";
-        }
-
-        const statusRecord = await prisma.nutritionStatus.findFirst({
-          where: { status: nutritionStatusEnum },
-        });
-        nutritionStatusId = statusRecord?.id;
-      }
+      const idVal = await calculateNutritionStatus(
+        familyMember.gender,
+        familyMember.birthDate,
+        calculateBMI,
+      );
+      nutritionStatusId = idVal;
     }
 
-    const nutrition = await prisma.nutrition.create({
-      data: {
-        height: Number(height),
-        weight: Number(weight),
-        bmi: calculateBMI,
+    const [nutritionResult] = await pool.query(
+      "INSERT INTO nutritions (height, weight, bmi, nutritionStatusId, familyMemberId, createdBy, measurementDate, monitoringPeriodId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())",
+      [
+        Number(height),
+        Number(weight),
+        calculateBMI,
         nutritionStatusId,
-        familyMemberId: familyMember.id,
-        createdBy: user.id,
-        measurementDate: measurementDate
-          ? new Date(measurementDate)
-          : new Date(),
-        monitoringPeriodId: period.id,
-      },
-      include: {
-        nutritionStatus: { select: { displayName: true, information: true } },
-      },
-    });
+        familyMember.id,
+        user.id,
+        measurementDate ? new Date(measurementDate) : new Date(),
+        period.id,
+      ],
+    );
+
+    const [nsRows] = await pool.query(
+      "SELECT displayName, information FROM nutrition_status WHERE id = ?",
+      [nutritionStatusId],
+    );
+    const nutrition = {
+      id: nutritionResult.insertId,
+      height: Number(height),
+      weight: Number(weight),
+      bmi: calculateBMI,
+      nutritionStatus: nsRows[0]
+        ? { displayName: nsRows[0].displayName, information: nsRows[0].information }
+        : null,
+    };
 
     return successResponse(res, nutrition, "Measurement added successfully");
   } catch (error) {
@@ -871,46 +791,53 @@ export const getNutritionHistory = async (req, res) => {
     const user = req.user;
     const { id } = req.params;
 
-    const familyMember = await prisma.familyMember.findUnique({
-      where: { id },
-      include: { family: true },
-    });
-
+    const [fmRows] = await pool.query(
+      `SELECT fm.fullName, f.userId AS family_userId
+       FROM family_members fm
+       JOIN families f ON f.id = fm.familyId
+       WHERE fm.id = ? LIMIT 1`,
+      [id],
+    );
+    const familyMember = fmRows[0];
     if (!familyMember) {
       return errorResponse(res, null, "Family member not found");
     }
 
     const allowed =
-      familyMember.family.userId === user.id ||
+      familyMember.family_userId === user.id ||
       user.role === "healthcare" ||
       user.role === "school";
     if (!allowed) {
       return errorResponse(res, 403, "Unauthorized");
     }
 
-    const history = await prisma.nutrition.findMany({
-      where: { familyMemberId: id },
-      orderBy: { measurementDate: "asc" },
-      include: {
-        nutritionStatus: { select: { displayName: true, information: true } },
-        monitoringPeriod: { select: { label: true } },
-      },
-    });
+    const [rows] = await pool.query(
+      `SELECT n.id, n.measurementDate, n.height, n.weight, n.bmi,
+              ns.displayName, mp.label AS period_label
+       FROM nutritions n
+       LEFT JOIN nutrition_status ns ON ns.id = n.nutritionStatusId
+       LEFT JOIN monitoring_periods mp ON mp.id = n.monitoringPeriodId
+       WHERE n.familyMemberId = ?
+       ORDER BY n.measurementDate ASC`,
+      [id],
+    );
+
+    const history = rows.map((n) => ({
+      id: n.id,
+      measurementDate: n.measurementDate,
+      height: n.height,
+      weight: n.weight,
+      bmi: n.bmi,
+      nutritionStatus: n.displayName ?? null,
+      period: n.period_label ?? null,
+    }));
 
     return successResponse(
       res,
       {
         childId: id,
         childName: familyMember.fullName,
-        history: history.map((n) => ({
-          id: n.id,
-          measurementDate: n.measurementDate,
-          height: n.height,
-          weight: n.weight,
-          bmi: n.bmi,
-          nutritionStatus: n.nutritionStatus?.displayName ?? null,
-          period: n.monitoringPeriod?.label ?? null,
-        })),
+        history,
       },
       "Nutrition history retrieved successfully",
     );
@@ -923,23 +850,20 @@ export const deleteFamilyMember = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const familyMember = await prisma.familyMember.findUnique({
-      where: { id },
-    });
-
+    const [fmRows] = await pool.query(
+      "SELECT * FROM family_members WHERE id = ? LIMIT 1",
+      [id],
+    );
+    const familyMember = fmRows[0];
     if (!familyMember) {
       return errorResponse(res, null, "Family member not found");
     }
 
     if (familyMember.jobId) {
-      await prisma.job.delete({
-        where: { id: familyMember.jobId },
-      });
+      await pool.query("DELETE FROM jobs WHERE id = ?", [familyMember.jobId]);
     }
 
-    await prisma.familyMember.delete({
-      where: { id },
-    });
+    await pool.query("DELETE FROM family_members WHERE id = ?", [id]);
 
     return successResponse(res, null, "Berhasil menghapus anggota keluarga");
   } catch (error) {

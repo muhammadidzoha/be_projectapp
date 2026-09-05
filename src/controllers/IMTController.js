@@ -1,7 +1,5 @@
-import { PrismaClient } from "@prisma/client";
+import pool from "../config/db.js";
 import { successResponse, errorResponse } from "../helpers/ResponseHelper.js";
-
-const prisma = new PrismaClient();
 
 export const calculateIMT = async (req, res) => {
   try {
@@ -14,17 +12,21 @@ export const calculateIMT = async (req, res) => {
     const ageYear = Math.floor(Number(ageMonths) / 12);
     const ageMonthRemainder = Number(ageMonths) % 12;
 
-    const bmiRef = await prisma.bmiReference.findFirst({
-      where: {
-        gender: gender === "L" ? "L" : "P",
-        ageYear: ageYear,
-        ageMonthFrom: { lte: ageMonthRemainder },
-        ageMonthTo: { gte: ageMonthRemainder },
-      },
-    });
+    const [bmiRefRows] = await pool.query(
+      `SELECT * FROM bmi_references
+       WHERE gender = ? AND ageYear = ? AND ageMonthFrom <= ? AND ageMonthTo >= ?
+       LIMIT 1`,
+      [gender === "L" ? "L" : "P", ageYear, ageMonthRemainder, ageMonthRemainder],
+    );
+    const bmiRef = bmiRefRows[0];
 
     if (!bmiRef) {
-      return errorResponse(res, null, "Referensi BMI tidak ditemukan untuk usia ini", 404);
+      return errorResponse(
+        res,
+        null,
+        "Referensi BMI tidak ditemukan untuk usia ini",
+        404,
+      );
     }
 
     const heightM = Number(heightCm) / 100;
